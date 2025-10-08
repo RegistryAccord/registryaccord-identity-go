@@ -1,0 +1,27 @@
+# Go build artifacts
+/bin/
+/build/
+/dist/
+**/*.test
+*.out
+coverage/
+.coverage
+
+# Modules and dev tools
+/vendor/
+/.cache/
+.gocache/
+.golangci.yml.local
+
+# IDE/editor
+.idea/
+.vscode/
+.DS_Store
+
+# Local env files
+.env
+.env.*.local
+.env.local
+
+# Logs
+*.log
