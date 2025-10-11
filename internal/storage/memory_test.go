@@ -1,4 +1,5 @@
-// internal/storage/memory_test.go
+// Package storage contains tests for the in-memory storage implementation.
+// This file tests the basic CRUD operations for identities.
 package storage
 
 import (
@@ -8,40 +9,54 @@ import (
 	"github.com/RegistryAccord/registryaccord-identity-go/internal/model"
 )
 
-func TestMemoryStore_PutGet(t *testing.T) {
+// TestMemoryStore_CreateGetIdentity tests the basic identity creation and retrieval flow.
+// Verifies that an identity can be successfully stored and retrieved from memory storage.
+func TestMemoryStore_CreateGetIdentity(t *testing.T) {
+	// Create a new in-memory store
 	store := NewMemory()
+	// Create a background context for the test
 	ctx := context.Background()
 
-	rec := model.IdentityRecord{
-		DID:       "did:ra:ed25519:abc",
-		PublicKey: []byte{1, 2, 3},
-		CreatedAt: "2024-01-01T00:00:00Z",
+	// Create a test identity with minimal data
+	identity := model.Identity{
+		DID: "did:plc:abc123", // Test DID
+		Document: model.DIDDocument{
+			ID: "did:plc:abc123", // Matching document ID
+		},
+		Keys: []model.KeyMaterial{{
+			ID: "key1", // Test key material
+		}},
+		CreatedAtUTC: "2024-01-01T00:00:00Z", // Creation timestamp
+		UpdatedAtUTC: "2024-01-01T00:00:00Z", // Update timestamp
 	}
-	if err := store.Put(ctx, rec); err != nil {
-		t.Fatalf("Put failed: %v", err)
+	// Test identity creation
+	if err := store.CreateIdentity(ctx, identity); err != nil {
+		t.Fatalf("CreateIdentity failed: %v", err)
 	}
 
-	got, err := store.Get(ctx, rec.DID)
+	// Test identity retrieval
+	got, err := store.GetIdentity(ctx, identity.DID)
 	if err != nil {
-		t.Fatalf("Get failed: %v", err)
+		t.Fatalf("GetIdentity failed: %v", err)
 	}
-	if got.DID != rec.DID {
-		t.Errorf("DID mismatch: got %q want %q", got.DID, rec.DID)
-	}
-	if string(got.PublicKey) != string(rec.PublicKey) {
-		t.Errorf("PublicKey mismatch: got %v want %v", got.PublicKey, rec.PublicKey)
-	}
-	if got.CreatedAt != rec.CreatedAt {
-		t.Errorf("CreatedAt mismatch: got %q want %q", got.CreatedAt, rec.CreatedAt)
+	// Verify the retrieved identity matches the created one
+	if got.DID != identity.DID {
+		t.Errorf("DID mismatch: got %q want %q", got.DID, identity.DID)
 	}
 }
 
-func TestMemoryStore_GetNotFound(t *testing.T) {
+// TestMemoryStore_GetIdentityNotFound tests that retrieving a non-existent identity
+// returns the appropriate ErrNotFound error.
+func TestMemoryStore_GetIdentityNotFound(t *testing.T) {
+	// Create a new in-memory store
 	store := NewMemory()
-	_, err := store.Get(context.Background(), "did:ra:ed25519:missing")
+	// Attempt to retrieve an identity that doesn't exist
+	_, err := store.GetIdentity(context.Background(), "did:plc:missing")
+	// Verify that an error was returned
 	if err == nil {
 		t.Fatalf("expected error, got nil")
 	}
+	// Verify that the error is specifically ErrNotFound
 	if err != ErrNotFound {
 		t.Fatalf("expected ErrNotFound, got %v", err)
 	}

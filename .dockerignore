@@ -1,0 +1,25 @@
+# Binaries
+bin/
+
+# Test output
+coverage.out
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Git files
+.git/
+
+# Environment files
+.env
+.env.local
+.env.example
+
+# Logs
+*.log
+
+# Temporary files
+*.tmp

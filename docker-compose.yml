@@ -1,0 +1,26 @@
+version: '3.8'
+
+# Environment variables can be set in multiple ways:
+# 1. OS environment variables (highest precedence)
+# 2. .env.local file (for local overrides, gitignored)
+# 3. .env file (for shared configuration)
+# 4. Default values in environment section
+
+services:
+  identityd:
+    build: .
+    ports:
+      - "8080:8080"
+    environment:
+      # Default values that can be overridden by env files or OS env
+      - ID_ENV=dev
+      - ID_HTTP_ADDR=:8080
+      - ID_METRICS_ADDR=:9090
+      - ID_DB_DSN=postgres://registryaccord:registryaccord@postgres:5432/registryaccord?sslmode=disable
+      - ID_KEY_BACKEND=memory
+      - ID_FEATURE_RECOVERY=true
+      - ID_JWT_AUD=registryaccord-local
+      - ID_JWT_ISS=registryaccord-identity
+      # ID_JWT_SIGNING_KEY must be set in OS environment or .env file
+      # ID_SESSION_TTL_SECONDS and ID_NONCE_TTL_SECONDS can be overridden if needed
+    restart: unless-stopped

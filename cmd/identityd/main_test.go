@@ -3,24 +3,34 @@ package main
 
 import (
 	"bytes"
-	"encoding/base64"
 	"encoding/json"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
+	"github.com/RegistryAccord/registryaccord-identity-go/internal/config"
 	"github.com/RegistryAccord/registryaccord-identity-go/internal/model"
 	"github.com/RegistryAccord/registryaccord-identity-go/internal/server"
 	"github.com/RegistryAccord/registryaccord-identity-go/internal/storage"
+	"log/slog"
 )
 
 // This is an integration-style test that wires the same components main() uses
 // (in-memory store + server mux) but runs them under httptest.Server.
 func TestIdentityd_Integration(t *testing.T) {
+	cfg := config.Config{
+		Address:       ":8080",
+		JWTPrivateKey: make([]byte, 64),
+		JWTAudience:   "test",
+		JWTIssuer:     "test",
+		SessionTTL:    10 * time.Minute,
+		NonceTTL:      5 * time.Minute,
+	}
 	store := storage.NewMemory()
-	mux := server.NewMux(store)
-	ts := httptest.NewServer(mux)
+	h, _ := server.New(cfg, store, slog.Default())
+	ts := httptest.NewServer(h.Router())
 	defer ts.Close()
 
 	// Health
@@ -34,27 +44,32 @@ func TestIdentityd_Integration(t *testing.T) {
 	resp.Body.Close()
 
 	// Create identity
-	pk := []byte{9, 8, 7}
-	in := map[string]string{"publicKey": base64.StdEncoding.EncodeToString(pk)}
+	in := map[string]string{"keySpec": "ed25519"}
 	body, _ := json.Marshal(in)
-	resp, err = http.Post(ts.URL+"/xrpc/com.registryaccord.identity.create", "application/json", bytes.NewReader(body))
+	resp, err = http.Post(ts.URL+"/v1/identity", "application/json", bytes.NewReader(body))
 	if err != nil {
 		t.Fatalf("create error: %v", err)
 	}
-	if resp.StatusCode != http.StatusOK {
+	if resp.StatusCode != http.StatusCreated {
 		b, _ := io.ReadAll(resp.Body)
 		resp.Body.Close()
 		t.Fatalf("create status = %d body=%s", resp.StatusCode, string(b))
 	}
-	var created struct{ DID string `json:"did"` }
-	if err := json.NewDecoder(resp.Body).Decode(&created); err != nil {
+	var env struct {
+		Data struct {
+			DID                 string                     `json:"did"`
+			VerificationMethods []model.VerificationMethod `json:"verificationMethods"`
+			CreatedAt           string                     `json:"createdAt"`
+		} `json:"data"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&env); err != nil {
 		resp.Body.Close()
 		t.Fatalf("decode create: %v", err)
 	}
 	resp.Body.Close()
 
 	// Get identity
-	resp, err = http.Get(ts.URL + "/xrpc/com.registryaccord.identity.get?did=" + created.DID)
+	resp, err = http.Get(ts.URL + "/v1/identity/" + env.Data.DID)
 	if err != nil {
 		t.Fatalf("get error: %v", err)
 	}
@@ -63,16 +78,17 @@ func TestIdentityd_Integration(t *testing.T) {
 		resp.Body.Close()
 		t.Fatalf("get status = %d body=%s", resp.StatusCode, string(b))
 	}
-	var dto model.IdentityRecordDTO
-	if err := json.NewDecoder(resp.Body).Decode(&dto); err != nil {
+	var env2 struct {
+		Data struct {
+			Document model.DIDDocument `json:"document"`
+		} `json:"data"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&env2); err != nil {
 		resp.Body.Close()
 		t.Fatalf("decode get: %v", err)
 	}
 	resp.Body.Close()
-	if dto.DID != created.DID {
-		t.Fatalf("DID mismatch: got %s want %s", dto.DID, created.DID)
-	}
-	if dto.PublicKey != base64.StdEncoding.EncodeToString(pk) {
-		t.Fatalf("publicKey mismatch: got %s", dto.PublicKey)
+	if env2.Data.Document.ID != env.Data.DID {
+		t.Fatalf("DID mismatch: got %s want %s", env2.Data.Document.ID, env.Data.DID)
 	}
 }
