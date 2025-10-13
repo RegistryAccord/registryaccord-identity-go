@@ -42,7 +42,7 @@ const (
 // Handler wires HTTP endpoints using net/http.
 type Handler struct {
 	cfg    config.Config
-	store  storage.Store
+	store  storage.ExtendedStore
 	logger *slog.Logger
 	signer ed25519.PrivateKey
 	clock  func() time.Time
@@ -50,7 +50,7 @@ type Handler struct {
 }
 
 // New creates a Handler using the supplied dependencies.
-func New(cfg config.Config, store storage.Store, logger *slog.Logger) (*Handler, error) {
+func New(cfg config.Config, store storage.ExtendedStore, logger *slog.Logger) (*Handler, error) {
 	if len(cfg.JWTPrivateKey) != ed25519.PrivateKeySize {
 		return nil, fmt.Errorf("jwt signing key must be %d bytes", ed25519.PrivateKeySize)
 	}
@@ -91,6 +91,10 @@ func (h *Handler) registerRoutes() {
 
 	h.router.Handle("/v1/key/rotate", h.loggingMiddleware(h.timeoutMiddleware(h.wrap(h.keyRotateHandler))))
 	h.router.Handle("/v1/identity/recover", h.loggingMiddleware(h.timeoutMiddleware(h.wrap(h.identityRecoverHandler))))
+	
+	// JWKS endpoints for public key discovery
+	h.router.Handle("/v1/jwks", h.loggingMiddleware(h.timeoutMiddleware(h.wrap(h.handleJWKS))))
+	h.router.Handle("/.well-known/jwks.json", h.loggingMiddleware(h.timeoutMiddleware(h.wrap(h.handleJWKS))))
 }
 
 type responseEnvelope struct {
@@ -189,9 +193,13 @@ func (h *Handler) remember(r *http.Request, w http.ResponseWriter, status int, p
 
 func (h *Handler) handleIdentityCreate(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
+		h.logger.Warn("identity creation failed - method not allowed", "correlationId", correlationIDFrom(r.Context()))
 		h.writeErrorWithRequest(w, r, http.StatusMethodNotAllowed, "IDENTITY_VALIDATION", "method not allowed", nil)
 		return
 	}
+	
+	// Log the start of identity creation process
+	h.logger.Info("identity creation initiated", "correlationId", correlationIDFrom(r.Context()))
 
 	var input struct {
 		KeySpec  string `json:"keySpec"`
@@ -200,6 +208,7 @@ func (h *Handler) handleIdentityCreate(w http.ResponseWriter, r *http.Request) {
 		} `json:"recovery"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
+		h.logger.Warn("identity creation failed - invalid JSON body", "correlationId", correlationIDFrom(r.Context()))
 		h.writeErrorWithRequest(w, r, http.StatusBadRequest, "IDENTITY_VALIDATION", "invalid JSON body", nil)
 		return
 	}
@@ -209,24 +218,29 @@ func (h *Handler) handleIdentityCreate(w http.ResponseWriter, r *http.Request) {
 		keySpec = "ed25519"
 	}
 	if keySpec != "ed25519" {
+		h.logger.Warn("identity creation failed - unsupported keySpec", "keySpec", keySpec, "correlationId", correlationIDFrom(r.Context()))
 		h.writeErrorWithRequest(w, r, http.StatusUnprocessableEntity, "IDENTITY_VALIDATION", "unsupported keySpec", map[string]any{"supported": []string{"ed25519"}})
 		return
 	}
 
 	didID, err := did.GeneratePLC()
 	if err != nil {
+		h.logger.Error("identity creation failed - failed to allocate did", "error", err, "correlationId", correlationIDFrom(r.Context()))
 		h.writeErrorWithRequest(w, r, http.StatusInternalServerError, "IDENTITY_INTERNAL", "failed to allocate did", nil)
 		return
 	}
+	h.logger.Info("new DID generated", "did", didID, "correlationId", correlationIDFrom(r.Context()))
 
 	createdAt := h.clock().Format(time.RFC3339)
 	vmID := fmt.Sprintf("%s#keys-1", didID)
 
 	pubKey, privKey, err := ed25519.GenerateKey(rand.Reader)
 	if err != nil {
+		h.logger.Error("identity creation failed - failed to generate key", "did", didID, "error", err, "correlationId", correlationIDFrom(r.Context()))
 		h.writeErrorWithRequest(w, r, http.StatusInternalServerError, "IDENTITY_INTERNAL", "failed to generate key", nil)
 		return
 	}
+	h.logger.Info("key pair generated for new identity", "did", didID, "correlationId", correlationIDFrom(r.Context()))
 
 	doc := model.DIDDocument{
 		Context: []string{"https://www.w3.org/ns/did/v1"},
@@ -262,9 +276,11 @@ func (h *Handler) handleIdentityCreate(w http.ResponseWriter, r *http.Request) {
 
 	if err := h.store.CreateIdentity(r.Context(), identity); err != nil {
 		if errors.Is(err, storage.ErrConflict) {
+			h.logger.Warn("identity creation failed - identity already exists", "did", didID, "correlationId", correlationIDFrom(r.Context()))
 			h.writeErrorWithRequest(w, r, http.StatusConflict, "IDENTITY_CONFLICT", "identity already exists", nil)
 			return
 		}
+		h.logger.Error("identity creation failed - failed to persist identity", "did", didID, "error", err, "correlationId", correlationIDFrom(r.Context()))
 		h.writeErrorWithRequest(w, r, http.StatusInternalServerError, "IDENTITY_INTERNAL", "failed to persist identity", nil)
 		return
 	}
@@ -290,45 +306,56 @@ func (h *Handler) handleIdentityCreate(w http.ResponseWriter, r *http.Request) {
 
 	payload := h.writeSuccess(w, http.StatusCreated, data, nil, r)
 	h.remember(r, w, http.StatusCreated, payload)
-	h.logger.Info("identity created", "did", didID, "correlationId", correlationIDFrom(r.Context()))
+	h.logger.Info("identity created successfully", "did", didID, "createdAt", createdAt, "correlationId", correlationIDFrom(r.Context()))
 }
 
 func (h *Handler) handleIdentityResolve(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
+		h.logger.Warn("identity resolution failed - method not allowed", "correlationId", correlationIDFrom(r.Context()))
 		h.writeErrorWithRequest(w, r, http.StatusMethodNotAllowed, "IDENTITY_VALIDATION", "method not allowed", nil)
 		return
 	}
 	didID := strings.TrimPrefix(r.URL.Path, "/v1/identity/")
 	if didID == "" {
+		h.logger.Warn("identity resolution failed - did is required", "correlationId", correlationIDFrom(r.Context()))
 		h.writeErrorWithRequest(w, r, http.StatusBadRequest, "IDENTITY_VALIDATION", "did is required", nil)
 		return
 	}
+	
+	// Log the start of identity resolution process
+	h.logger.Info("identity resolution initiated", "did", didID, "correlationId", correlationIDFrom(r.Context()))
+	
 	identity, err := h.store.GetIdentity(r.Context(), didID)
 	if err != nil {
 		if errors.Is(err, storage.ErrNotFound) {
+			h.logger.Warn("identity resolution failed - identity not found", "did", didID, "correlationId", correlationIDFrom(r.Context()))
 			h.writeErrorWithRequest(w, r, http.StatusNotFound, "IDENTITY_NOT_FOUND", "identity not found", nil)
 			return
 		}
+		h.logger.Error("identity resolution failed - lookup error", "did", didID, "error", err, "correlationId", correlationIDFrom(r.Context()))
 		h.writeErrorWithRequest(w, r, http.StatusInternalServerError, "IDENTITY_INTERNAL", "lookup failed", nil)
 		return
 	}
 	ctx := context.WithValue(r.Context(), contextKeyDID, identity.DID)
 	r = r.WithContext(ctx)
 
-	body := h.writeSuccess(w, http.StatusOK, map[string]any{"document": identity.Document}, nil, r)
+	payload := mustJSON(identity.Document)
+	w.Header().Set(headerContentType, contentTypeJSON)
 	w.Header().Set(headerCacheControl, cacheControlResolve)
-	w.Header().Set(headerETag, generateETag(body))
-	h.logger.Info("identity resolved", "did", identity.DID, "correlationId", correlationIDFrom(r.Context()))
+	w.Header().Set(headerETag, generateETag(payload))
+	w.WriteHeader(http.StatusOK)
+	if _, err := w.Write(payload); err != nil {
+		h.logger.Warn("write identity document failed", "error", err, "correlationId", correlationIDFrom(r.Context()))
+	}
+	h.logger.Info("identity resolved successfully", "did", identity.DID, "correlationId", correlationIDFrom(r.Context()))
 }
 
-func (h *Handler) handleWellKnown(w http.ResponseWriter, r *http.Request) {
-	h.writeErrorWithRequest(w, r, http.StatusNotImplemented, "IDENTITY_INTERNAL", "well-known not configured", nil)
-}
 
 // handleSessionNonce generates and stores a single-use nonce for session authentication
 // This is the first step in the challenge-response authentication flow
 func (h *Handler) handleSessionNonce(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
+		h.logger.Warn("session nonce failed - method not allowed", "correlationId", correlationIDFrom(r.Context()))
 		h.writeErrorWithRequest(w, r, http.StatusMethodNotAllowed, "IDENTITY_VALIDATION", "method not allowed", nil)
 		return
 	}
@@ -336,15 +363,20 @@ func (h *Handler) handleSessionNonce(w http.ResponseWriter, r *http.Request) {
 	didID := strings.TrimSpace(r.URL.Query().Get("did"))
 	audience := strings.TrimSpace(r.URL.Query().Get("aud"))
 	if didID == "" || audience == "" {
+		h.logger.Warn("session nonce failed - missing required parameters", "did", didID, "aud", audience, "correlationId", correlationIDFrom(r.Context()))
 		h.writeErrorWithRequest(w, r, http.StatusBadRequest, "IDENTITY_VALIDATION", "did and aud are required", nil)
 		return
 	}
+	// Log the start of session nonce generation
+	h.logger.Info("session nonce generation initiated", "did", didID, "aud", audience, "correlationId", correlationIDFrom(r.Context()))
 	// Verify the DID exists before issuing a nonce for it
 	if _, err := h.store.GetIdentity(r.Context(), didID); err != nil {
 		if errors.Is(err, storage.ErrNotFound) {
+			h.logger.Warn("session nonce failed - identity not found", "did", didID, "correlationId", correlationIDFrom(r.Context()))
 			h.writeErrorWithRequest(w, r, http.StatusNotFound, "IDENTITY_NOT_FOUND", "identity not found", nil)
 			return
 		}
+		h.logger.Error("session nonce failed - identity lookup error", "did", didID, "error", err, "correlationId", correlationIDFrom(r.Context()))
 		h.writeErrorWithRequest(w, r, http.StatusInternalServerError, "IDENTITY_INTERNAL", "identity lookup failed", nil)
 		return
 	}
@@ -362,24 +394,31 @@ func (h *Handler) handleSessionNonce(w http.ResponseWriter, r *http.Request) {
 		ExpiresAt: expires,
 	}
 	if err := h.store.PutNonce(r.Context(), nonce); err != nil {
+		h.logger.Error("session nonce failed - failed to persist nonce", "did", didID, "error", err, "correlationId", correlationIDFrom(r.Context()))
 		h.writeErrorWithRequest(w, r, http.StatusInternalServerError, "IDENTITY_INTERNAL", "failed to persist nonce", nil)
 		return
 	}
+	h.logger.Info("session nonce generated and stored successfully", "did", didID, "aud", audience, "expiresAt", expires.Format(time.RFC3339), "correlationId", correlationIDFrom(r.Context()))
 
 	h.writeSuccess(w, http.StatusOK, map[string]any{
-		"nonce":     nonceValue,
-		"expiresAt": expires.Format(time.RFC3339),
+		"data": map[string]any{
+			"nonce":     nonceValue,
+			"expiresAt": expires.Format(time.RFC3339),
+		},
 	}, nil, r)
-	h.logger.Info("session nonce issued", "did", didID, "aud", audience, "correlationId", correlationIDFrom(r.Context()))
+	h.logger.Info("session nonce issued successfully", "did", didID, "aud", audience, "nonce", nonceValue, "expiresAt", expires.Format(time.RFC3339), "correlationId", correlationIDFrom(r.Context()))
 }
 
 // handleSessionIssue validates a signed nonce and issues a JWT session token
 // This is the second step in the challenge-response authentication flow
 func (h *Handler) handleSessionIssue(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
+		h.logger.Warn("session issue failed - method not allowed", "correlationId", correlationIDFrom(r.Context()))
 		h.writeErrorWithRequest(w, r, http.StatusMethodNotAllowed, "IDENTITY_VALIDATION", "method not allowed", nil)
 		return
 	}
+	// Log the start of session issue process
+	h.logger.Info("session issue process initiated", "correlationId", correlationIDFrom(r.Context()))
 	// Parse the authentication request payload
 	var input struct {
 		Nonce     string `json:"nonce"`     // The nonce value to validate
@@ -388,6 +427,7 @@ func (h *Handler) handleSessionIssue(w http.ResponseWriter, r *http.Request) {
 		DID       string `json:"did"`       // DID claiming ownership of the nonce
 	}
 	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
+		h.logger.Warn("session issue failed - invalid JSON body", "correlationId", correlationIDFrom(r.Context()))
 		h.writeErrorWithRequest(w, r, http.StatusBadRequest, "IDENTITY_VALIDATION", "invalid JSON body", nil)
 		return
 	}
@@ -395,11 +435,13 @@ func (h *Handler) handleSessionIssue(w http.ResponseWriter, r *http.Request) {
 	// Retrieve and consume the nonce (single-use)
 	nonce, err := h.store.ConsumeNonce(r.Context(), input.Nonce)
 	if err != nil {
+		h.logger.Warn("session issue failed - nonce invalid or expired", "nonce", input.Nonce, "correlationId", correlationIDFrom(r.Context()))
 		h.writeErrorWithRequest(w, r, http.StatusUnauthorized, "IDENTITY_AUTHZ", "nonce invalid or expired", nil)
 		return
 	}
 	// Verify the nonce is bound to the correct DID and audience
 	if input.DID != nonce.DID || input.Audience != nonce.Audience {
+		h.logger.Warn("session issue failed - nonce binding mismatch", "expectedDID", nonce.DID, "providedDID", input.DID, "expectedAud", nonce.Audience, "providedAud", input.Audience, "correlationId", correlationIDFrom(r.Context()))
 		h.writeErrorWithRequest(w, r, http.StatusUnauthorized, "IDENTITY_AUTHZ", "nonce binding mismatch", nil)
 		return
 	}
@@ -407,10 +449,12 @@ func (h *Handler) handleSessionIssue(w http.ResponseWriter, r *http.Request) {
 	// Retrieve the identity to get the public key for signature verification
 	identity, err := h.store.GetIdentity(r.Context(), nonce.DID)
 	if err != nil {
+		h.logger.Warn("session issue failed - identity lookup failed", "did", nonce.DID, "error", err, "correlationId", correlationIDFrom(r.Context()))
 		h.writeErrorWithRequest(w, r, http.StatusUnauthorized, "IDENTITY_AUTHZ", "identity lookup failed", nil)
 		return
 	}
 	if len(identity.Document.VerificationMethod) == 0 {
+		h.logger.Error("session issue failed - no verification methods", "did", nonce.DID, "correlationId", correlationIDFrom(r.Context()))
 		h.writeErrorWithRequest(w, r, http.StatusInternalServerError, "IDENTITY_INTERNAL", "no verification methods", nil)
 		return
 	}
@@ -424,13 +468,17 @@ func (h *Handler) handleSessionIssue(w http.ResponseWriter, r *http.Request) {
 	// Decode the client's signature from base64
 	sig, err := base64.StdEncoding.DecodeString(input.Signature)
 	if err != nil {
+		h.logger.Warn("session issue failed - signature must be base64", "did", nonce.DID, "correlationId", correlationIDFrom(r.Context()))
 		h.writeErrorWithRequest(w, r, http.StatusBadRequest, "IDENTITY_VALIDATION", "signature must be base64", nil)
 		return
 	}
 
+	// Log signature verification attempt
+	h.logger.Info("verifying signature for session issue", "did", nonce.DID, "correlationId", correlationIDFrom(r.Context()))
 	// Verify the signature against the expected message format
 	message := []byte(input.Nonce + "|" + input.Audience + "|" + input.DID)
 	if !ed25519.Verify(ed25519.PublicKey(pubKeyBytes), message, sig) {
+		h.logger.Warn("session issue failed - signature verification failed", "did", nonce.DID, "correlationId", correlationIDFrom(r.Context()))
 		h.writeErrorWithRequest(w, r, http.StatusUnauthorized, "IDENTITY_AUTHZ", "signature verification failed", nil)
 		return
 	}
@@ -438,17 +486,32 @@ func (h *Handler) handleSessionIssue(w http.ResponseWriter, r *http.Request) {
 	// Generate a JWT session token with appropriate claims
 	issuedAt := time.Now()
 	expires := issuedAt.Add(h.cfg.SessionTTL)
-	token := jwtlib.NewWithClaims(jwtlib.SigningMethodEdDSA, jwtlib.MapClaims{
+	
+	// Generate a unique JWT ID
+	jti := uuid.NewString()
+	
+	// Get the key ID for the signing key
+	keyID := fmt.Sprintf("key-%x", h.signer.Public().(ed25519.PublicKey)[:4])
+	
+	h.logger.Info("generating JWT token", "did", nonce.DID, "aud", nonce.Audience, "iss", h.cfg.JWTIssuer, "jti", jti, "keyID", keyID, "correlationId", correlationIDFrom(r.Context()))
+	
+	claims := jwtlib.MapClaims{
 		"sub": nonce.DID,      // Subject is the authenticated DID
 		"aud": nonce.Audience, // Audience as specified in the request
 		"iss": h.cfg.JWTIssuer, // Issuer identifier from config
 		"iat": issuedAt.Unix(), // Issued at timestamp
 		"exp": expires.Unix(),  // Expiration timestamp
-	})
+		"jti": jti,             // JWT ID for uniqueness
+	}
+	
+	token := jwtlib.NewWithClaims(jwtlib.SigningMethodEdDSA, claims)
+	token.Header["kid"] = keyID // Add key ID to header for JWKS lookup
 
 	// Sign the JWT with the server's private key
+	h.logger.Info("signing JWT token", "did", nonce.DID, "keyID", keyID, "correlationId", correlationIDFrom(r.Context()))
 	signedToken, err := token.SignedString(h.signer)
 	if err != nil {
+		h.logger.Error("session issue failed - failed to sign jwt", "did", nonce.DID, "error", err, "correlationId", correlationIDFrom(r.Context()))
 		h.writeErrorWithRequest(w, r, http.StatusInternalServerError, "IDENTITY_INTERNAL", "failed to sign jwt", nil)
 		return
 	}
@@ -458,24 +521,71 @@ func (h *Handler) handleSessionIssue(w http.ResponseWriter, r *http.Request) {
 	r = r.WithContext(ctx)
 
 	h.writeSuccess(w, http.StatusOK, map[string]any{
-		"jwt": signedToken,
-		"exp": expires.Format(time.RFC3339),
-		"aud": nonce.Audience,
-		"sub": nonce.DID,
+		"data": map[string]any{
+			"jwt": signedToken,
+			"exp": expires.Format(time.RFC3339),
+			"aud": nonce.Audience,
+			"sub": nonce.DID,
+		},
 	}, nil, r)
-	h.logger.Info("session issued", "did", nonce.DID, "aud", nonce.Audience, "correlationId", correlationIDFrom(r.Context()))
+	h.logger.Info("session issued successfully", "did", nonce.DID, "aud", nonce.Audience, "jti", jti, "expiresAt", expires.Format(time.RFC3339), "correlationId", correlationIDFrom(r.Context()))
 }
 
-func (h *Handler) handleKeyRotate(w http.ResponseWriter, r *http.Request) {
-	h.writeErrorWithRequest(w, r, http.StatusNotImplemented, "IDENTITY_INTERNAL", "key rotation not yet implemented", nil)
-}
 
-func (h *Handler) handleIdentityRecover(w http.ResponseWriter, r *http.Request) {
-	if !h.cfg.FeatureRecovery {
-		h.writeErrorWithRequest(w, r, http.StatusForbidden, "IDENTITY_AUTHZ", "recovery disabled", nil)
+// handleJWKS serves the JSON Web Key Set for JWT verification
+// This endpoint exposes the server's public keys that clients can use 
+// to verify JWT signatures issued by this service
+func (h *Handler) handleJWKS(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		h.logger.Warn("JWKS request failed - method not allowed", "correlationId", correlationIDFrom(r.Context()))
+		h.writeErrorWithRequest(w, r, http.StatusMethodNotAllowed, "IDENTITY_VALIDATION", "method not allowed", nil)
 		return
 	}
-	h.writeErrorWithRequest(w, r, http.StatusNotImplemented, "IDENTITY_INTERNAL", "recovery not yet implemented", nil)
+	
+	// Log the JWKS request
+	h.logger.Info("JWKS request received", "correlationId", correlationIDFrom(r.Context()))
+
+	// For now, we'll use the server's signing key as the JWKS key
+	// In a production implementation, this would query the storage for active keys
+	privKey := h.signer
+	if len(privKey) != ed25519.PrivateKeySize {
+		h.logger.Error("JWKS request failed - invalid signing key", "correlationId", correlationIDFrom(r.Context()))
+		h.writeErrorWithRequest(w, r, http.StatusInternalServerError, "IDENTITY_INTERNAL", "invalid signing key", nil)
+		return
+	}
+
+	// Extract the public key from the private key
+	pubKey := privKey.Public().(ed25519.PublicKey)
+	
+	// Create a key ID based on the public key
+	keyID := fmt.Sprintf("key-%x", pubKey[:4])
+	
+	// Encode the public key as base64 URL-safe string (no padding)
+	// Ed25519 public keys are 32 bytes
+	x := base64.RawURLEncoding.EncodeToString(pubKey)
+	
+	// Create the JWKS response with our signing key
+	jwks := model.JSONWebKeySet{
+		Keys: []model.JSONWebKey{
+			{
+				Kty: "OKP",     // Octet Key Pair for Ed25519
+				Kid: keyID,     // Key identifier
+				Alg: "EdDSA",   // Algorithm
+				Use: "sig",     // Usage - signature
+				Crv: "Ed25519", // Curve
+				X:   x,         // Public key
+			},
+		},
+	}
+	
+	// Set appropriate cache headers for JWKS
+	w.Header().Set("Cache-Control", "public, max-age=300") // 5 minutes
+	
+	// Increment JWKS cache refreshes counter
+	incrementJWKSCacheRefreshes()
+
+	h.writeSuccess(w, http.StatusOK, jwks, nil, r)
+	h.logger.Info("JWKS served successfully", "keyID", keyID, "correlationId", correlationIDFrom(r.Context()))
 }
 
 func (h *Handler) writeSuccess(w http.ResponseWriter, status int, data any, meta any, r *http.Request) []byte {

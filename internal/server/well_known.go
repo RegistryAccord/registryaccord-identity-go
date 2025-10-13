@@ -37,8 +37,6 @@ func (h *Handler) wellKnownHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Return the DID document in the response
-	h.writeSuccess(w, http.StatusOK, map[string]any{
-		"document": identity.Document, // The DID Document for the canonical identity
-	}, nil, r)
+	// Return the DID document directly as per requirements
+	h.writeSuccess(w, http.StatusOK, identity.Document, nil, r)
 }

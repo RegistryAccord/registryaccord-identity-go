@@ -9,6 +9,7 @@ Identity service for the RegistryAccord protocol, focused on identity issuance a
 - **Key Rotation**: Rotate identity keys via `/v1/key/rotate`
 - **Identity Recovery**: Recover identities via `/v1/identity/recover` (feature flag)
 - **Session Management**: Issue JWT sessions via nonce exchange
+- **JWKS Endpoint**: Expose public keys at `/v1/jwks` and `/.well-known/jwks.json` for JWT verification
 - **Storage**: In-memory and PostgreSQL backends with connection pooling
 - **Observability**: Structured JSON logging, Prometheus metrics, and health/readiness probes
 - **Production Ready**: Graceful shutdown, request timeouts, background jobs, and cloud-native deployment
@@ -29,9 +30,16 @@ make build
 
 The service can be configured using the following environment variables. See `.env.example` for a complete list.
 
-- `ID_JWT_SIGNING_KEY` (required): Base64-encoded Ed25519 private key for JWT signing
-- `ID_DB_DSN` (optional): PostgreSQL connection string for persistent storage
+Required environment variables:
+- `ID_JWT_SIGNING_KEY`: Base64-encoded Ed25519 private key for JWT signing
+- `ID_ISSUER_URL`: Service issuer URL (e.g., http://localhost:8080)
+- `ID_ALLOWED_AUDIENCES`: Comma-separated list of allowed audiences (e.g., cdv,gateway)
+
+Optional environment variables:
+- `ID_DB_DSN`: PostgreSQL connection string for persistent storage
 - `ID_FEATURE_RECOVERY`: Enable identity recovery feature (default: false)
+- `ID_DID_METHOD`: DID method (must be "plc" for Phase 1, default: plc)
+- `PORT`: Server port (default: 8080)
 
 For local development, you can:
 1. Copy `local.env.example` to `.env.local` (gitignored)
@@ -41,11 +49,16 @@ For local development, you can:
 ### Run
 ```bash
 # In-memory storage
-ID_JWT_SIGNING_KEY=$(openssl rand -base64 32) ./bin/identityd
+ID_JWT_SIGNING_KEY=$(openssl rand -base64 32) \
+ID_ISSUER_URL=http://localhost:8080 \
+ID_ALLOWED_AUDIENCES=cdv,gateway \
+./bin/identityd
 
 # PostgreSQL storage
 ID_DB_DSN="postgres://user:pass@localhost/db" \
 ID_JWT_SIGNING_KEY=$(openssl rand -base64 32) \
+ID_ISSUER_URL=http://localhost:8080 \
+ID_ALLOWED_AUDIENCES=cdv,gateway \
 ./bin/identityd
 ```
 
@@ -74,6 +87,8 @@ docker-compose up
 ```bash
 # Set required variables
 export ID_JWT_SIGNING_KEY=$(openssl rand -base64 32)
+export ID_ISSUER_URL=http://localhost:8080
+export ID_ALLOWED_AUDIENCES=cdv,gateway
 
 # Run with docker-compose (overrides defaults)
 docker-compose up
@@ -93,10 +108,14 @@ docker-compose up
 ```bash
 # Generate signing key
 export ID_JWT_SIGNING_KEY=$(openssl rand -base64 32)
+export ID_ISSUER_URL=http://localhost:8080
+export ID_ALLOWED_AUDIENCES=cdv,gateway
 
 # Run with in-memory storage
 docker run -p 8080:8080 \
   -e ID_JWT_SIGNING_KEY="$ID_JWT_SIGNING_KEY" \
+  -e ID_ISSUER_URL="$ID_ISSUER_URL" \
+  -e ID_ALLOWED_AUDIENCES="$ID_ALLOWED_AUDIENCES" \
   registryaccord/identityd
 ```
 
@@ -121,7 +140,7 @@ curl http://localhost:8080/v1/identity/did:plc:abc123
 
 ### Get Session Nonce
 ```bash
-curl "http://localhost:8080/v1/session/nonce?did=did:plc:abc123&aud=example.com"
+curl "http://localhost:8080/v1/session/nonce?did=did:plc:abc123&aud=cdv"
 ```
 
 ### Issue Session
@@ -130,7 +149,7 @@ curl -X POST http://localhost:8080/v1/session \
   -H "Content-Type: application/json" \
   -d '{
     "did": "did:plc:abc123",
-    "aud": "example.com",
+    "aud": "cdv",
     "nonce": "...",
     "signature": "..."
   }'
@@ -144,6 +163,13 @@ curl -X POST http://localhost:8080/v1/key/rotate \
     "did": "did:plc:abc123",
     "signature": "..."
   }'
+```
+
+### Get JWKS
+```bash
+curl http://localhost:8080/v1/jwks
+# or
+curl http://localhost:8080/.well-known/jwks.json
 ```
 
 ## Contributing

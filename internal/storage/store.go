@@ -58,6 +58,18 @@ type IdempotencyStore interface {
 	Recall(ctx context.Context, key string) (StoredResponse, bool)
 }
 
+// RecoveryTokenStore manages recovery tokens for identity recovery.
+type RecoveryTokenStore interface {
+	// StoreRecoveryToken stores a new recovery token for later validation
+	StoreRecoveryToken(ctx context.Context, token RecoveryToken) error
+	
+	// ValidateRecoveryToken validates a recovery token and marks it as used
+	ValidateRecoveryToken(ctx context.Context, did, email, token string) (bool, error)
+	
+	// CleanupExpiredRecoveryTokens removes expired recovery tokens
+	CleanupExpiredRecoveryTokens(ctx context.Context, now time.Time) error
+}
+
 // Store aggregates all persistence capabilities required by the service.
 // Provides a unified interface for all storage operations needed by the identity service.
 type Store interface {
@@ -65,6 +77,12 @@ type Store interface {
 	OperationLogStore
 	SessionNonceStore
 	IdempotencyStore
+}
+
+// ExtendedStore extends the base Store interface with recovery token support.
+type ExtendedStore interface {
+	Store
+	RecoveryTokenStore
 }
 
 // StoredResponse captures the HTTP response data persisted for idempotent replays.

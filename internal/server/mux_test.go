@@ -4,7 +4,6 @@ package server
 
 import (
 	"bytes"
-	"encoding/base64"
 	"encoding/json"
 	"io"
 	"log/slog"
@@ -78,8 +77,7 @@ func TestIdentityCreateAndGet_Success(t *testing.T) {
 	defer ts.Close()
 
 	// Prepare test data
-	pk := []byte{1, 2, 3, 4, 5} // Mock public key
-	in := map[string]string{"publicKey": base64.StdEncoding.EncodeToString(pk)}
+	in := map[string]string{"keySpec": "ed25519"}
 	buf, _ := json.Marshal(in)
 
 	// Test identity creation
@@ -123,17 +121,13 @@ func TestIdentityCreateAndGet_Success(t *testing.T) {
 		t.Fatalf("get status = %d body=%s", getResp.StatusCode, string(b))
 	}
 	// Parse the response to verify the retrieved identity
-	var env2 struct {
-		Data struct {
-			Document model.DIDDocument `json:"document"`
-		} `json:"data"`
-	}
-	if err := json.NewDecoder(getResp.Body).Decode(&env2); err != nil {
+	var doc model.DIDDocument
+	if err := json.NewDecoder(getResp.Body).Decode(&doc); err != nil {
 		t.Fatalf("decode get: %v", err)
 	}
 	// Verify the retrieved DID matches the created DID
-	if env2.Data.Document.ID != env.Data.DID {
-		t.Fatalf("DID mismatch: got %s want %s", env2.Data.Document.ID, env.Data.DID)
+	if doc.ID != env.Data.DID {
+		t.Fatalf("DID mismatch: got %s want %s", doc.ID, env.Data.DID)
 	}
 }
 

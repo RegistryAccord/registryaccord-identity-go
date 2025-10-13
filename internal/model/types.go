@@ -101,3 +101,18 @@ type SessionToken struct {
 	Audience string    // Intended audience for the token
 	Expires  time.Time // Expiration timestamp for the token
 }
+
+// JSONWebKey represents a key in JWKS format
+type JSONWebKey struct {
+	Kty string `json:"kty"` // Key type (e.g., "OKP" for Ed25519)
+	Kid string `json:"kid"` // Key ID
+	Alg string `json:"alg"` // Algorithm (e.g., "EdDSA")
+	Use string `json:"use"` // Public key use (e.g., "sig")
+	Crv string `json:"crv"` // Curve name (e.g., "Ed25519")
+	X   string `json:"x"`   // Base64URL-encoded public key
+}
+
+// JSONWebKeySet represents a JWKS response
+type JSONWebKeySet struct {
+	Keys []JSONWebKey `json:"keys"`
+}

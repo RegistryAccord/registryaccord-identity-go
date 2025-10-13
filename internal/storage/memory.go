@@ -18,16 +18,17 @@ import (
 // The implementation uses fine-grained mutexes for better concurrency:
 // - Separate mutexes for identities, operations, nonces, and idempotency records
 // - Read-write mutexes to allow concurrent reads
-func NewMemory() Store {
+func NewMemory() ExtendedStore {
 	return &memory{
-		identities:  make(map[string]model.Identity),  // DID -> Identity mapping
-		operations:  make(map[string][]model.OperationLogEntry), // DID -> Operation log entries
-		nonces:      make(map[string]model.Nonce),      // Nonce value -> Nonce mapping
-		idempotency: make(map[string]StoredResponse),   // Key -> Cached response mapping
+		identities:     make(map[string]model.Identity),  // DID -> Identity mapping
+		operations:     make(map[string][]model.OperationLogEntry), // DID -> Operation log entries
+		nonces:         make(map[string]model.Nonce),      // Nonce value -> Nonce mapping
+		idempotency:    make(map[string]StoredResponse),   // Key -> Cached response mapping
+		recoveryTokens: make(map[string]RecoveryToken),   // Token value -> RecoveryToken mapping
 	}
 }
 
-// memory implements the Store interface using in-memory data structures.
+// memory implements the ExtendedStore interface using in-memory data structures.
 // Uses separate read-write mutexes for each data collection to improve concurrency.
 type memory struct {
 	muIdentity sync.RWMutex                    // Mutex for identity operations
@@ -41,6 +42,9 @@ type memory struct {
 
 	muIdempotency sync.RWMutex                 // Mutex for idempotency operations
 	idempotency   map[string]StoredResponse    // Key -> Cached response mapping
+
+	muRecovery sync.RWMutex                    // Mutex for recovery token operations
+	recoveryTokens map[string]RecoveryToken    // Token value -> RecoveryToken mapping
 }
 
 // CreateIdentity stores a new identity record in memory.
@@ -189,6 +193,61 @@ func (m *memory) Recall(ctx context.Context, key string) (StoredResponse, bool) 
 		clone.Headers[k] = v
 	}
 	return clone, true
+}
+
+// StoreRecoveryToken stores a new recovery token for later validation.
+// Recovery tokens are stored by their value for efficient lookup during validation.
+// Uses a write lock to ensure exclusive access during storage.
+func (m *memory) StoreRecoveryToken(ctx context.Context, token RecoveryToken) error {
+	m.muRecovery.Lock()
+	defer m.muRecovery.Unlock()
+	m.recoveryTokens[token.Token] = token
+	return nil
+}
+
+// ValidateRecoveryToken validates a recovery token and marks it as used.
+// Returns true if the token is valid and hasn't been used or expired.
+// The token is marked as used upon successful validation.
+// Uses a write lock since it modifies the recovery token collection.
+func (m *memory) ValidateRecoveryToken(ctx context.Context, did, email, token string) (bool, error) {
+	m.muRecovery.Lock()
+	defer m.muRecovery.Unlock()
+	recoveryToken, ok := m.recoveryTokens[token]
+	if !ok {
+		return false, nil
+	}
+	// Check if the token has expired
+	if time.Now().UTC().After(recoveryToken.ExpiresAt) {
+		delete(m.recoveryTokens, token)
+		return false, nil
+	}
+	// Check if the token has already been used
+	if recoveryToken.Used {
+		return false, nil
+	}
+	// Check if the token matches the DID and email
+	if recoveryToken.DID != did || recoveryToken.Email != email {
+		return false, nil
+	}
+	// Mark the token as used
+	recoveryToken.Used = true
+	m.recoveryTokens[token] = recoveryToken
+	return true, nil
+}
+
+// CleanupExpiredRecoveryTokens removes expired recovery tokens from storage.
+// This periodic cleanup prevents memory bloat from expired tokens.
+// Uses a write lock since it modifies the recovery token collection.
+func (m *memory) CleanupExpiredRecoveryTokens(ctx context.Context, now time.Time) error {
+	m.muRecovery.Lock()
+	defer m.muRecovery.Unlock()
+	for value, token := range m.recoveryTokens {
+		// Remove expired tokens
+		if now.After(token.ExpiresAt) {
+			delete(m.recoveryTokens, value)
+		}
+	}
+	return nil
 }
 
 // cloneIdentity creates a deep copy of an Identity to prevent external modification

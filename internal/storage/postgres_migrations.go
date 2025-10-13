@@ -17,6 +17,7 @@ import (
 // - operation_log: Maintains an append-only log of identity operations
 // - nonces: Manages single-use challenges for session authentication
 // - idempotency_cache: Caches responses for idempotent operation handling
+// - recovery_tokens: Manages single-use tokens for identity recovery
 func MigratePostgres(ctx context.Context, db *sql.DB) error {
 	// List of migrations to apply in order
 	// Each migration is idempotent (uses IF NOT EXISTS)
@@ -65,6 +66,19 @@ func MigratePostgres(ctx context.Context, db *sql.DB) error {
         )`,
 		// Index on expiration time for efficient cleanup of expired cache entries
 		`CREATE INDEX IF NOT EXISTS idx_idempotency_cache_expires_at ON idempotency_cache (expires_at)`,
+		// Recovery tokens table manages single-use tokens for identity recovery
+		// Recovery tokens are used to verify identity during recovery operations
+		`CREATE TABLE IF NOT EXISTS recovery_tokens (
+            token TEXT PRIMARY KEY,         -- Cryptographically secure token value
+            did TEXT NOT NULL,              -- DID this token is for
+            email TEXT NOT NULL,            -- Email address associated with this token
+            expires_at TIMESTAMPTZ NOT NULL,-- Expiration timestamp with timezone
+            used BOOLEAN NOT NULL DEFAULT FALSE -- Whether this token has been used
+        )`,
+		// Index on DID for efficient token lookup
+		`CREATE INDEX IF NOT EXISTS idx_recovery_tokens_did ON recovery_tokens (did)`,
+		// Index on expiration time for efficient cleanup of expired tokens
+		`CREATE INDEX IF NOT EXISTS idx_recovery_tokens_expires_at ON recovery_tokens (expires_at)`,
 	}
 
 	// Apply each migration in sequence

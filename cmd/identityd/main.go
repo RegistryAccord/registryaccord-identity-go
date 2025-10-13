@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strconv"
 	"syscall"
 	"time"
 
@@ -34,7 +35,7 @@ func main() {
 	}))
 	slog.SetDefault(logger)
 
-	var store storage.Store
+	var store storage.ExtendedStore
 	if cfg.DatabaseDSN != "" {
 		store, err = storage.NewPostgres(cfg.DatabaseDSN)
 		if err != nil {
@@ -55,8 +56,14 @@ func main() {
 		os.Exit(1)
 	}
 
+	// Use the Port from config if Address is not set or is default
+	addr := cfg.Address
+	if addr == "" || addr == ":8080" {
+		addr = ":" + strconv.Itoa(cfg.Port)
+	}
+
 	srv := &http.Server{
-		Addr:              cfg.Address,
+		Addr:              addr,
 		Handler:           handler.Router(),
 		ReadHeaderTimeout: 5 * time.Second,
 	}
@@ -67,7 +74,7 @@ func main() {
 	signal.Notify(stop, syscall.SIGINT, syscall.SIGTERM)
 
 	go func() {
-		logger.Info("identityd starting", "addr", srv.Addr, "env", cfg.Env)
+		logger.Info("identityd starting", "addr", srv.Addr, "env", cfg.Env, "didMethod", cfg.DIDMethod)
 		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			logger.Error("server error", "error", err)
 			os.Exit(1)
@@ -105,6 +112,10 @@ func main() {
 					ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 					if err := store.CleanupExpired(ctx, time.Now().UTC()); err != nil {
 						logger.Error("cleanup expired nonces failed", "error", err)
+					}
+					// Also cleanup expired recovery tokens
+					if err := store.CleanupExpiredRecoveryTokens(ctx, time.Now().UTC()); err != nil {
+						logger.Error("cleanup expired recovery tokens failed", "error", err)
 					}
 					cancel()
 				case <-stop:

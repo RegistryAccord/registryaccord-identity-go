@@ -78,17 +78,13 @@ func TestIdentityd_Integration(t *testing.T) {
 		resp.Body.Close()
 		t.Fatalf("get status = %d body=%s", resp.StatusCode, string(b))
 	}
-	var env2 struct {
-		Data struct {
-			Document model.DIDDocument `json:"document"`
-		} `json:"data"`
-	}
-	if err := json.NewDecoder(resp.Body).Decode(&env2); err != nil {
+	var doc model.DIDDocument
+	if err := json.NewDecoder(resp.Body).Decode(&doc); err != nil {
 		resp.Body.Close()
 		t.Fatalf("decode get: %v", err)
 	}
 	resp.Body.Close()
-	if env2.Data.Document.ID != env.Data.DID {
-		t.Fatalf("DID mismatch: got %s want %s", env2.Data.Document.ID, env.Data.DID)
+	if doc.ID != env.Data.DID {
+		t.Fatalf("DID mismatch: got %s want %s", doc.ID, env.Data.DID)
 	}
 }

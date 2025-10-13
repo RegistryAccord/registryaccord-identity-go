@@ -14,7 +14,7 @@ import (
 	"github.com/RegistryAccord/registryaccord-identity-go/internal/model"
 )
 
-// postgres implements the Store interface using PostgreSQL as the backend.
+// postgres implements the ExtendedStore interface using PostgreSQL as the backend.
 // Uses connection pooling and JSON serialization for complex data structures.
 type postgres struct {
 	db *sql.DB // Database connection pool
@@ -28,7 +28,7 @@ type postgres struct {
 // - Max 25 open connections to prevent overwhelming the database
 // - Max 5 idle connections to maintain a warm pool
 // - 5-minute lifetime and idle time to prevent stale connections
-func NewPostgres(dsn string) (Store, error) {
+func NewPostgres(dsn string) (ExtendedStore, error) {
 	db, err := sql.Open("pgx", dsn)
 	if err != nil {
 		return nil, fmt.Errorf("open db: %w", err)
@@ -330,4 +330,61 @@ func (p *postgres) Recall(ctx context.Context, key string) (StoredResponse, bool
 		return StoredResponse{}, false
 	}
 	return response, true
+}
+
+// StoreRecoveryToken stores a new recovery token for later validation in PostgreSQL.
+// Recovery tokens are stored with their associated DID, email, and expiration time.
+func (p *postgres) StoreRecoveryToken(ctx context.Context, token RecoveryToken) error {
+	// Set a reasonable timeout for database operations
+	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+
+	// Insert recovery token with all associated data
+	const q = `INSERT INTO recovery_tokens (token, did, email, expires_at, used) VALUES ($1, $2, $3, $4, $5)`
+	// Execute insert with recovery token data
+	_, err := p.db.ExecContext(ctx, q, token.Token, token.DID, token.Email, token.ExpiresAt, token.Used)
+	if err != nil {
+		return fmt.Errorf("insert recovery token: %w", err)
+	}
+	return nil
+}
+
+// ValidateRecoveryToken validates a recovery token and marks it as used in PostgreSQL.
+// Uses atomic UPDATE with RETURNING to ensure single-use semantics.
+// Returns true if the token is valid and hasn't been used or expired.
+func (p *postgres) ValidateRecoveryToken(ctx context.Context, did, email, token string) (bool, error) {
+	// Set a reasonable timeout for database operations
+	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+
+	// Atomically update and return the token if it exists, matches DID/email, and hasn't expired or been used
+	const q = `UPDATE recovery_tokens SET used = true WHERE token = $1 AND did = $2 AND email = $3 AND expires_at > $4 AND used = false RETURNING token`
+	var validatedToken string
+	// Execute update and scan returned data
+	err := p.db.QueryRowContext(ctx, q, token, did, email, time.Now().UTC()).Scan(&validatedToken)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return false, nil
+		}
+		return false, fmt.Errorf("validate recovery token: %w", err)
+	}
+	// If we got here, the token was valid and has been marked as used
+	return true, nil
+}
+
+// CleanupExpiredRecoveryTokens removes expired recovery tokens from PostgreSQL storage.
+// This periodic cleanup prevents database bloat from expired tokens.
+func (p *postgres) CleanupExpiredRecoveryTokens(ctx context.Context, now time.Time) error {
+	// Set a reasonable timeout for database operations
+	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+
+	// Delete all expired recovery tokens in a single operation
+	const q = `DELETE FROM recovery_tokens WHERE expires_at <= $1`
+	// Execute delete with current time
+	_, err := p.db.ExecContext(ctx, q, now)
+	if err != nil {
+		return fmt.Errorf("cleanup recovery tokens: %w", err)
+	}
+	return nil
 }

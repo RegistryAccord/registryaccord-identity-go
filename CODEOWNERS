@@ -1,7 +1,0 @@
-# CODEOWNERS
-# API-affecting changes require review by spec-editors as in specs repo GOVERNANCE.
-# Source: ../registryaccord-specs/GOVERNANCE.md
-
-* @RegistryAccord/service-identity-maintainers
-/api/ @RegistryAccord/spec-editors
-/docs/ @RegistryAccord/spec-editors
