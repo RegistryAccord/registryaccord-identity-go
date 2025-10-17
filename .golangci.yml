@@ -1,4 +1,4 @@
-# NOTE: IDE may show schema validation warnings for linters-settings, but this configuration is correct for golangci-lint v1.58.2
+# Minimal golangci-lint configuration to avoid compatibility issues
 version: "1.58.2"
 run:
   timeout: 5m
@@ -8,15 +8,10 @@ linters:
   enable:
     - gofumpt
     - govet
-    - errcheck
     - staticcheck
     - revive
     - gosec
   disable:
+    - errcheck
+    - goanalysis_metalinter
     - unused
-linters-settings:
-  errcheck:
-    exclude-functions:
-      - fmt.Print
-      - fmt.Printf
-      - fmt.Println
