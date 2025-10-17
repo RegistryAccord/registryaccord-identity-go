@@ -24,14 +24,25 @@ jobs:
           path: |
             ~/.cache/go-build
             ~/go/pkg/mod
-          key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
+            ~/go/bin
+          key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}-tools-v1.58.2-2
           restore-keys: |
-            ${{ runner.os }}-go-
+            ${{ runner.os }}-go-tools-v1.58.2-
+            ${{ runner.os }}-go-tools-
 
       - name: Install tools
         run: |
+          # Clear any existing golangci-lint installation
+          rm -f $(go env GOPATH)/bin/golangci-lint
+          # Install gofumpt
           go install mvdan.cc/gofumpt@latest
+          # Install specific version of golangci-lint
           curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $(go env GOPATH)/bin v1.58.2
+          # Verify installation
+          $(go env GOPATH)/bin/golangci-lint version
+
+      - name: Set up PATH
+        run: echo "$(go env GOPATH)/bin" >> $GITHUB_PATH
 
       - name: Format check
         run: make fmt-check
