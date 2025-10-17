@@ -11,7 +11,8 @@ fmt: ## Format code with gofumpt
 	@gofumpt -l -w .
 
 fmt-check: ## Check formatting (no changes)
-	@diff -u <(echo -n) <(gofumpt -l . | tee /dev/stderr)
+	@gofumpt -l . | tee /tmp/gofumpt-check.log
+	@test -s /tmp/gofumpt-check.log && (echo "Files need formatting:" && cat /tmp/gofumpt-check.log && rm /tmp/gofumpt-check.log && exit 1) || (rm -f /tmp/gofumpt-check.log && echo "Formatting is correct" && exit 0)
 
 lint: ## Run golangci-lint
 	@golangci-lint run
