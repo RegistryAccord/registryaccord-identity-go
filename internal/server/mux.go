@@ -58,12 +58,12 @@ func New(cfg config.Config, store storage.ExtendedStore, logger *slog.Logger) (*
 	if logger == nil {
 		logger = slog.Default()
 	}
-	
+
 	// Initialize signing keys in storage
 	if err := initializeSigningKey(context.Background(), store, cfg); err != nil {
 		return nil, fmt.Errorf("failed to initialize signing keys: %w", err)
 	}
-	
+
 	h := &Handler{
 		cfg:    cfg,
 		store:  store,
@@ -99,7 +99,7 @@ func (h *Handler) registerRoutes() {
 
 	h.router.Handle("/v1/key/rotate", h.corsMiddleware(h.loggingMiddleware(h.timeoutMiddleware(h.wrap(h.keyRotateHandler)))))
 	h.router.Handle("/v1/identity/recover", h.corsMiddleware(h.loggingMiddleware(h.timeoutMiddleware(h.wrap(h.identityRecoverHandler)))))
-	
+
 	// JWKS endpoints for public key discovery
 	h.router.Handle("/v1/jwks", h.corsMiddleware(h.loggingMiddleware(h.timeoutMiddleware(h.wrap(h.handleJWKS)))))
 	h.router.Handle("/.well-known/jwks.json", h.corsMiddleware(h.loggingMiddleware(h.timeoutMiddleware(h.wrap(h.handleJWKS)))))
@@ -205,7 +205,7 @@ func (h *Handler) handleIdentityCreate(w http.ResponseWriter, r *http.Request) {
 		h.writeErrorWithRequest(w, r, http.StatusMethodNotAllowed, "IDENTITY_VALIDATION", "method not allowed", nil)
 		return
 	}
-	
+
 	// Log the start of identity creation process
 	h.logger.Info("identity creation initiated", "correlationId", correlationIDFrom(r.Context()))
 
@@ -329,10 +329,10 @@ func (h *Handler) handleIdentityResolve(w http.ResponseWriter, r *http.Request) 
 		h.writeErrorWithRequest(w, r, http.StatusBadRequest, "IDENTITY_VALIDATION", "did is required", nil)
 		return
 	}
-	
+
 	// Log the start of identity resolution process
 	h.logger.Info("identity resolution initiated", "did", didID, "correlationId", correlationIDFrom(r.Context()))
-	
+
 	identity, err := h.store.GetIdentity(r.Context(), didID)
 	if err != nil {
 		if errors.Is(err, storage.ErrNotFound) {
@@ -357,7 +357,6 @@ func (h *Handler) handleIdentityResolve(w http.ResponseWriter, r *http.Request) 
 	}
 	h.logger.Info("identity resolved successfully", "did", identity.DID, "correlationId", correlationIDFrom(r.Context()))
 }
-
 
 // handleSessionNonce generates and stores a single-use nonce for session authentication
 // This is the first step in the challenge-response authentication flow
@@ -505,32 +504,32 @@ func (h *Handler) handleSessionIssue(w http.ResponseWriter, r *http.Request) {
 		h.writeErrorWithRequest(w, r, http.StatusInternalServerError, "IDENTITY_INTERNAL", "failed to get signing key", nil)
 		return
 	}
-	
+
 	// Verify the current key has private key material
 	if len(currentKey.PrivateKey) == 0 {
 		h.logger.Error("session issue failed - current signing key missing private material", "did", nonce.DID, "keyID", currentKey.ID, "correlationId", correlationIDFrom(r.Context()))
 		h.writeErrorWithRequest(w, r, http.StatusInternalServerError, "IDENTITY_INTERNAL", "signing key missing private material", nil)
 		return
 	}
-	
+
 	// Generate a JWT session token with appropriate claims
 	issuedAt := time.Now()
 	expires := issuedAt.Add(h.cfg.SessionTTL)
-	
+
 	// Generate a unique JWT ID
 	jti := uuid.NewString()
-	
+
 	h.logger.Info("generating JWT token", "did", nonce.DID, "aud", nonce.Audience, "iss", h.cfg.JWTIssuer, "jti", jti, "keyID", currentKey.ID, "correlationId", correlationIDFrom(r.Context()))
-	
+
 	claims := jwtlib.MapClaims{
-		"sub": nonce.DID,      // Subject is the authenticated DID
-		"aud": nonce.Audience, // Audience as specified in the request
+		"sub": nonce.DID,       // Subject is the authenticated DID
+		"aud": nonce.Audience,  // Audience as specified in the request
 		"iss": h.cfg.JWTIssuer, // Issuer identifier from config
 		"iat": issuedAt.Unix(), // Issued at timestamp
 		"exp": expires.Unix(),  // Expiration timestamp
 		"jti": jti,             // JWT ID for uniqueness
 	}
-	
+
 	token := jwtlib.NewWithClaims(jwtlib.SigningMethodEdDSA, claims)
 	token.Header["kid"] = currentKey.ID // Add key ID to header for JWKS lookup
 
@@ -562,9 +561,8 @@ func (h *Handler) handleSessionIssue(w http.ResponseWriter, r *http.Request) {
 	h.logger.Info("session issued successfully", "did", nonce.DID, "aud", nonce.Audience, "jti", jti, "expiresAt", expires.Format(time.RFC3339), "correlationId", correlationIDFrom(r.Context()))
 }
 
-
 // handleJWKS serves the JSON Web Key Set for JWT verification
-// This endpoint exposes the server's public keys that clients can use 
+// This endpoint exposes the server's public keys that clients can use
 // to verify JWT signatures issued by this service
 func (h *Handler) handleJWKS(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
@@ -572,7 +570,7 @@ func (h *Handler) handleJWKS(w http.ResponseWriter, r *http.Request) {
 		h.writeErrorWithRequest(w, r, http.StatusMethodNotAllowed, "IDENTITY_VALIDATION", "method not allowed", nil)
 		return
 	}
-	
+
 	// Log the JWKS request
 	h.logger.Info("JWKS request received", "correlationId", correlationIDFrom(r.Context()))
 
@@ -592,29 +590,29 @@ func (h *Handler) handleJWKS(w http.ResponseWriter, r *http.Request) {
 		if len(key.PublicKey) == 0 {
 			continue
 		}
-		
+
 		// Encode the public key as base64 URL-safe string (no padding)
 		// Ed25519 public keys are 32 bytes
 		x := base64.RawURLEncoding.EncodeToString(key.PublicKey)
-		
+
 		// Create JWKS entry for this key
 		jwksKey := model.JSONWebKey{
 			Kty: "OKP",     // Octet Key Pair for Ed25519
-			Kid: key.ID,     // Key identifier
+			Kid: key.ID,    // Key identifier
 			Alg: "EdDSA",   // Algorithm
 			Use: "sig",     // Usage - signature
 			Crv: "Ed25519", // Curve
 			X:   x,         // Public key
 		}
-		
+
 		jwksKeys = append(jwksKeys, jwksKey)
 	}
-	
+
 	// Create the JWKS response with all active signing keys
 	jwks := model.JSONWebKeySet{
 		Keys: jwksKeys,
 	}
-	
+
 	// Convert JWKS to JSON for ETag calculation
 	jwksJSON, err := json.Marshal(jwks)
 	if err != nil {
@@ -622,10 +620,10 @@ func (h *Handler) handleJWKS(w http.ResponseWriter, r *http.Request) {
 		h.writeErrorWithRequest(w, r, http.StatusInternalServerError, "IDENTITY_INTERNAL", "failed to generate JWKS", nil)
 		return
 	}
-	
+
 	// Generate ETag from JWKS content
 	etag := fmt.Sprintf("\"%x\"", sha256.Sum256(jwksJSON))
-	
+
 	// Check if client has a matching ETag (If-None-Match)
 	if r.Header.Get("If-None-Match") == etag {
 		w.Header().Set("ETag", etag)
@@ -634,12 +632,12 @@ func (h *Handler) handleJWKS(w http.ResponseWriter, r *http.Request) {
 		h.logger.Info("JWKS not modified (ETag match)", "keyCount", len(jwksKeys), "correlationId", correlationIDFrom(r.Context()))
 		return
 	}
-	
+
 	// Set appropriate cache headers for JWKS
 	// Recommended cache TTL is 5-10 minutes for production
 	w.Header().Set("ETag", etag)
 	w.Header().Set("Cache-Control", "public, max-age=300") // 5 minutes
-	
+
 	// Increment JWKS cache refreshes counter
 	incrementJWKSCacheRefreshes()
 

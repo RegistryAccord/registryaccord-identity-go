@@ -21,39 +21,39 @@ type Identity struct {
 // handlers. It intentionally maps to flattened Go structs to simplify
 // marshaling.
 type DIDDocument struct {
-	Context            []string             `json:"@context"`            // JSON-LD context for the document
-	ID                 string               `json:"id"`                  // The DID identifier
-	AlsoKnownAs        []string             `json:"alsoKnownAs,omitempty"` // Alternative identifiers for the DID subject
-	VerificationMethod []VerificationMethod `json:"verificationMethod"`  // Public keys available for cryptographic operations
-	Authentication     []string             `json:"authentication"`      // References to verification methods for authentication
+	Context            []string             `json:"@context"`                  // JSON-LD context for the document
+	ID                 string               `json:"id"`                        // The DID identifier
+	AlsoKnownAs        []string             `json:"alsoKnownAs,omitempty"`     // Alternative identifiers for the DID subject
+	VerificationMethod []VerificationMethod `json:"verificationMethod"`        // Public keys available for cryptographic operations
+	Authentication     []string             `json:"authentication"`            // References to verification methods for authentication
 	AssertionMethod    []string             `json:"assertionMethod,omitempty"` // References to verification methods for assertions
-	Service            []DIDService         `json:"service,omitempty"`   // Service endpoints associated with the DID
-	Created            string               `json:"created"`             // Creation timestamp in RFC3339 format
-	Updated            string               `json:"updated"`             // Last update timestamp in RFC3339 format
-	VersionID          string               `json:"versionId"`           // Version identifier for the document
+	Service            []DIDService         `json:"service,omitempty"`         // Service endpoints associated with the DID
+	Created            string               `json:"created"`                   // Creation timestamp in RFC3339 format
+	Updated            string               `json:"updated"`                   // Last update timestamp in RFC3339 format
+	VersionID          string               `json:"versionId"`                 // Version identifier for the document
 }
 
 // VerificationMethod defines a signing or key agreement capability attached to
 // the DID. Phase 1 only requires Ed25519 verification keys.
 type VerificationMethod struct {
-	ID                 string `json:"id"`                  // Unique identifier for this verification method
-	Type               string `json:"type"`                // Cryptographic suite type (e.g., Ed25519VerificationKey2020)
-	Controller         string `json:"controller"`          // DID that controls this verification method
-	PublicKeyMultibase string `json:"publicKeyMultibase"`  // Public key encoded using multibase format
+	ID                 string `json:"id"`                 // Unique identifier for this verification method
+	Type               string `json:"type"`               // Cryptographic suite type (e.g., Ed25519VerificationKey2020)
+	Controller         string `json:"controller"`         // DID that controls this verification method
+	PublicKeyMultibase string `json:"publicKeyMultibase"` // Public key encoded using multibase format
 }
 
 // DIDService represents optional service endpoints embedded in the DID
 // document. Phase 1 exposes none by default, but the structure enables future
 // expansion without breaking consumers.
 type DIDService struct {
-	ID              string            `json:"id"`               // Unique identifier for this service
-	Type            string            `json:"type"`             // Service type identifier
-	ServiceEndpoint map[string]string `json:"serviceEndpoint"`  // Service endpoint details as key-value pairs
+	ID              string            `json:"id"`              // Unique identifier for this service
+	Type            string            `json:"type"`            // Service type identifier
+	ServiceEndpoint map[string]string `json:"serviceEndpoint"` // Service endpoint details as key-value pairs
 }
 
 // RecoveryPolicy captures recovery configuration applied to the DID.
 type RecoveryPolicy struct {
-	Method string `json:"method"`  // Recovery method identifier (e.g., "social", "key")
+	Method string `json:"method"` // Recovery method identifier (e.g., "social", "key")
 }
 
 // OperationType distinguishes log entry variants.
@@ -120,11 +120,11 @@ type JSONWebKeySet struct {
 
 // JWTSigningKey represents a server-side JWT signing key with metadata for rotation
 type JWTSigningKey struct {
-	ID         string    `json:"id"`         // Unique key identifier
-	PrivateKey []byte    `json:"-"`          // Private key bytes (never serialized)
-	PublicKey  []byte    `json:"publicKey"`  // Public key bytes
-	CreatedAt  time.Time `json:"createdAt"`  // When the key was created
+	ID          string    `json:"id"`          // Unique key identifier
+	PrivateKey  []byte    `json:"-"`           // Private key bytes (never serialized)
+	PublicKey   []byte    `json:"publicKey"`   // Public key bytes
+	CreatedAt   time.Time `json:"createdAt"`   // When the key was created
 	ActivatedAt time.Time `json:"activatedAt"` // When the key became active
-	RetiredAt  time.Time `json:"retiredAt"`  // When the key was retired (zero if still active)
-	ExpiresAt  time.Time `json:"expiresAt"`  // When the key expires and should be removed
+	RetiredAt   time.Time `json:"retiredAt"`   // When the key was retired (zero if still active)
+	ExpiresAt   time.Time `json:"expiresAt"`   // When the key expires and should be removed
 }

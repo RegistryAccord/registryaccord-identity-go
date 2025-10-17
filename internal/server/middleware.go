@@ -67,11 +67,11 @@ func (h *Handler) loggingMiddleware(next http.Handler) http.Handler {
 
 		// Log request details for operational visibility
 		h.logger.Info("request completed",
-			"method", r.Method,           // HTTP method (GET, POST, etc.)
-			"path", r.URL.Path,           // Request path
+			"method", r.Method, // HTTP method (GET, POST, etc.)
+			"path", r.URL.Path, // Request path
 			"status", wrapped.statusCode, // Actual HTTP status code returned
-			"duration", duration,         // Request processing time
-			"user_agent", r.UserAgent(),  // Client user agent string
+			"duration", duration, // Request processing time
+			"user_agent", r.UserAgent(), // Client user agent string
 		)
 
 		// Collect metrics for monitoring and alerting
@@ -92,19 +92,19 @@ func (h *Handler) loggingMiddleware(next http.Handler) http.Handler {
 // This allows the logging middleware to record the actual status code returned by handlers.
 // Implements the http.ResponseWriter interface by embedding the original ResponseWriter.
 type responseWriter struct {
-	http.ResponseWriter // Embedded original ResponseWriter
-	statusCode int       // Captured HTTP status code
+	http.ResponseWriter     // Embedded original ResponseWriter
+	statusCode          int // Captured HTTP status code
 }
 
 // WriteHeader captures the status code before calling the original WriteHeader.
 // This ensures we can log the actual status code returned by handlers.
 func (rw *responseWriter) WriteHeader(code int) {
-	rw.statusCode = code                     // Capture the status code
-	rw.ResponseWriter.WriteHeader(code)      // Call original WriteHeader
+	rw.statusCode = code                // Capture the status code
+	rw.ResponseWriter.WriteHeader(code) // Call original WriteHeader
 }
 
 // Write delegates to the original ResponseWriter's Write method.
 // This is needed to fully implement the http.ResponseWriter interface.
 func (rw *responseWriter) Write(b []byte) (int, error) {
-	return rw.ResponseWriter.Write(b)        // Delegate to original Write
+	return rw.ResponseWriter.Write(b) // Delegate to original Write
 }

@@ -9,7 +9,7 @@ import (
 // wellKnownHandler serves the DID document at .well-known/did.json.
 // This endpoint provides a standardized way to discover the DID document
 // for the service's canonical DID.
-// 
+//
 // For Phase 1, this implementation returns the latest created identity.
 // In a production implementation, this would likely be configurable to
 // return a specific canonical DID document.

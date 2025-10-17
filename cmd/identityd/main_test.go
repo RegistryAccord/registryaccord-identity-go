@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"io"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -14,7 +15,6 @@ import (
 	"github.com/RegistryAccord/registryaccord-identity-go/internal/model"
 	"github.com/RegistryAccord/registryaccord-identity-go/internal/server"
 	"github.com/RegistryAccord/registryaccord-identity-go/internal/storage"
-	"log/slog"
 )
 
 // This is an integration-style test that wires the same components main() uses

@@ -27,10 +27,10 @@ func generateRecoveryToken() string {
 func (h *Handler) requestEmailRecovery(ctx context.Context, did, email string) error {
 	// Generate a recovery token
 	token := generateRecoveryToken()
-	
+
 	// Set expiration time (e.g., 1 hour)
 	expires := h.clock().Add(1 * time.Hour)
-	
+
 	// Create and store the recovery token
 	recoveryToken := storage.RecoveryToken{
 		DID:       did,
@@ -39,16 +39,15 @@ func (h *Handler) requestEmailRecovery(ctx context.Context, did, email string) e
 		ExpiresAt: expires,
 		Used:      false,
 	}
-	
+
 	// Store the recovery token
 	if err := h.store.StoreRecoveryToken(ctx, recoveryToken); err != nil {
 		return fmt.Errorf("failed to store recovery token: %w", err)
 	}
-	
+
 	// In a real implementation, we would send an email to the user with the token
 	// For now, we'll just log it
 	h.logger.Info("recovery token generated", "did", did, "email", email, "token", token)
-	
+
 	return nil
 }
-

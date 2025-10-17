@@ -67,7 +67,7 @@ var (
 // metricsHandler exposes Prometheus metrics through the main HTTP server.
 // This endpoint serves metrics in the Prometheus exposition format
 // for monitoring and alerting purposes.
-// 
+//
 // The metrics include:
 // - HTTP request count and duration (from middleware)
 // - Go runtime metrics (automatically collected by Prometheus client)

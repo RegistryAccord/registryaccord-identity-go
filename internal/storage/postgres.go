@@ -23,7 +23,7 @@ type postgres struct {
 // NewPostgres creates a Store backed by PostgreSQL with connection pooling.
 // Configures connection pool settings for optimal performance and resource usage.
 // Tests the database connection before returning the store.
-// 
+//
 // Connection pool configuration:
 // - Max 25 open connections to prevent overwhelming the database
 // - Max 5 idle connections to maintain a warm pool

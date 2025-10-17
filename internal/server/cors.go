@@ -17,13 +17,13 @@ func (h *Handler) corsMiddleware(next http.Handler) http.Handler {
 		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
 		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Correlation-Id, Idempotency-Key")
 		w.Header().Set("Access-Control-Max-Age", "86400") // 24 hours
-		
+
 		// Handle preflight OPTIONS requests
 		if r.Method == "OPTIONS" {
 			w.WriteHeader(http.StatusOK)
 			return
 		}
-		
+
 		// Continue with the next handler
 		next.ServeHTTP(w, r)
 	})

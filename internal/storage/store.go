@@ -62,10 +62,10 @@ type IdempotencyStore interface {
 type RecoveryTokenStore interface {
 	// StoreRecoveryToken stores a new recovery token for later validation
 	StoreRecoveryToken(ctx context.Context, token RecoveryToken) error
-	
+
 	// ValidateRecoveryToken validates a recovery token and marks it as used
 	ValidateRecoveryToken(ctx context.Context, did, email, token string) (bool, error)
-	
+
 	// CleanupExpiredRecoveryTokens removes expired recovery tokens
 	CleanupExpiredRecoveryTokens(ctx context.Context, now time.Time) error
 }
@@ -75,21 +75,21 @@ type RecoveryTokenStore interface {
 type JWTSigningKeyStore interface {
 	// GetCurrentSigningKey returns the currently active signing key
 	GetCurrentSigningKey(ctx context.Context) (model.JWTSigningKey, error)
-	
+
 	// GetSigningKeyByID retrieves a specific signing key by its ID
 	GetSigningKeyByID(ctx context.Context, keyID string) (model.JWTSigningKey, error)
-	
+
 	// ListActiveSigningKeys returns all currently active signing keys
 	// (including those in the overlap window)
 	ListActiveSigningKeys(ctx context.Context) ([]model.JWTSigningKey, error)
-	
+
 	// AddSigningKey adds a new signing key to the store
 	AddSigningKey(ctx context.Context, key model.JWTSigningKey) error
-	
+
 	// RetireSigningKey marks a signing key as retired
 	// It will remain in the store until its expiration time
 	RetireSigningKey(ctx context.Context, keyID string, retiredAt time.Time) error
-	
+
 	// CleanupExpiredSigningKeys removes expired signing keys from storage
 	CleanupExpiredSigningKeys(ctx context.Context, now time.Time) error
 }

@@ -23,12 +23,12 @@ import (
 // Uses minimal configuration suitable for testing purposes.
 func newTestServer() (*httptest.Server, storage.Store) {
 	cfg := config.Config{
-		Address:       ":8080",           // Test server address
-		JWTPrivateKey: make([]byte, 64),  // Mock JWT signing key
-		JWTAudience:   "test",            // Test JWT audience
-		JWTIssuer:     "test",            // Test JWT issuer
-		SessionTTL:    10 * time.Minute,  // Test session duration
-		NonceTTL:      5 * time.Minute,   // Test nonce duration
+		Address:       ":8080",          // Test server address
+		JWTPrivateKey: make([]byte, 64), // Mock JWT signing key
+		JWTAudience:   "test",           // Test JWT audience
+		JWTIssuer:     "test",           // Test JWT issuer
+		SessionTTL:    10 * time.Minute, // Test session duration
+		NonceTTL:      5 * time.Minute,  // Test nonce duration
 	}
 	// Use in-memory storage for test isolation
 	store := storage.NewMemory()

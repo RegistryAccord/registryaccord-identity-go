@@ -11,7 +11,7 @@ import (
 // MigratePostgres applies schema migrations to the PostgreSQL database.
 // Creates all necessary tables and indexes for the identity service storage.
 // Uses IF NOT EXISTS clauses to make migrations idempotent.
-// 
+//
 // Tables created:
 // - identities: Stores DID documents and associated metadata
 // - operation_log: Maintains an append-only log of identity operations

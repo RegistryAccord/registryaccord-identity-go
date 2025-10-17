@@ -54,28 +54,28 @@ type Config struct {
 	JWTIssuer       string        // Issuer identifier for JWTs
 	SessionTTL      time.Duration // Duration before session tokens expire
 	NonceTTL        time.Duration // Duration before nonces expire
-	
+
 	// New fields for enhanced validation
 	IssuerURL        string   // ID_ISSUER_URL - Service issuer URL
 	AllowedAudiences []string // ID_ALLOWED_AUDIENCES - List of allowed audiences
 	DIDMethod        string   // ID_DID_METHOD - DID method (must be "plc" for Phase 1)
 	Port             int      // PORT - Server port number
-	
+
 	// TLS configuration
-	TLSCertFile      string   // Path to TLS certificate file
-	TLSKeyFile       string   // Path to TLS private key file
+	TLSCertFile string // Path to TLS certificate file
+	TLSKeyFile  string // Path to TLS private key file
 }
 
 // Default configuration values used when environment variables are not set
 const (
-	defaultAddress        = ":8080"               // Default HTTP server port
-	defaultMetricsAddress = ":9090"               // Default metrics server port
-	defaultAudience       = "registryaccord-local"  // Default JWT audience
+	defaultAddress        = ":8080"                   // Default HTTP server port
+	defaultMetricsAddress = ":9090"                   // Default metrics server port
+	defaultAudience       = "registryaccord-local"    // Default JWT audience
 	defaultIssuer         = "registryaccord-identity" // Default JWT issuer
-	defaultSessionTTL     = 10 * time.Minute        // Default session token lifetime
-	defaultNonceTTL       = 5 * time.Minute         // Default nonce lifetime
-	defaultDIDMethod      = "plc"                   // Default DID method for Phase 1
-	defaultPort           = 8080                    // Default server port
+	defaultSessionTTL     = 10 * time.Minute          // Default session token lifetime
+	defaultNonceTTL       = 5 * time.Minute           // Default nonce lifetime
+	defaultDIDMethod      = "plc"                     // Default DID method for Phase 1
+	defaultPort           = 8080                      // Default server port
 )
 
 // Load reads environment variables and produces a Config suitable for wiring the service.
@@ -221,7 +221,7 @@ func Load() (Config, error) {
 	if certFile, exists := os.LookupEnv("ID_TLS_CERT_FILE"); exists {
 		cfg.TLSCertFile = certFile
 	}
-	
+
 	if keyFile, exists := os.LookupEnv("ID_TLS_KEY_FILE"); exists {
 		cfg.TLSKeyFile = keyFile
 	}
@@ -240,12 +240,12 @@ func parseAudiences(raw string) ([]string, error) {
 		}
 		return jsonAudiences, nil
 	}
-	
+
 	// If not JSON, parse as CSV
 	if raw == "" {
 		return nil, errors.New("ID_ALLOWED_AUDIENCES cannot be empty")
 	}
-	
+
 	// Split by comma and trim whitespace
 	audiences := strings.Split(raw, ",")
 	for i, audience := range audiences {
@@ -254,10 +254,9 @@ func parseAudiences(raw string) ([]string, error) {
 			return nil, errors.New("ID_ALLOWED_AUDIENCES contains empty audience")
 		}
 	}
-	
+
 	return audiences, nil
 }
-
 
 // parseBool converts a string to a boolean value, returning false if parsing fails
 func parseBool(v string) bool {

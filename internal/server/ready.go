@@ -11,10 +11,10 @@ import (
 // readyHandler returns 200 OK if the service is ready to serve requests.
 // This endpoint is used by load balancers and orchestration systems
 // to determine when the service is healthy and ready to receive traffic.
-// 
+//
 // Readiness checks:
 // 1. Database connectivity (if using PostgreSQL storage)
-// 
+//
 // Returns 200 OK if all checks pass, 503 Service Unavailable if any check fails.
 func (h *Handler) readyHandler(w http.ResponseWriter, r *http.Request) {
 	// Create a context with timeout to prevent hanging readiness checks

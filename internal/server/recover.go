@@ -19,7 +19,7 @@ import (
 // identityRecoverHandler recovers an identity using a recovery proof.
 // This endpoint allows identity owners to recover access to their DID
 // when they've lost control of their keys.
-// 
+//
 // Recovery process:
 // 1. Validates that recovery is enabled in the service configuration
 // 2. Validates the recovery proof provided based on the configured method
@@ -43,7 +43,7 @@ func (h *Handler) identityRecoverHandler(w http.ResponseWriter, r *http.Request)
 		h.writeError(w, http.StatusForbidden, "IDENTITY_AUTHZ", "recovery disabled", correlationIDFrom(r.Context()), nil)
 		return
 	}
-	
+
 	// Log the start of identity recovery process
 	h.logger.Info("identity recovery initiated", "correlationId", correlationIDFrom(r.Context()))
 
@@ -75,7 +75,7 @@ func (h *Handler) identityRecoverHandler(w http.ResponseWriter, r *http.Request)
 
 	// Log recovery method being used
 	h.logger.Info("validating recovery proof", "did", input.DID, "method", identity.RecoveryState.Method, "correlationId", correlationIDFrom(r.Context()))
-	
+
 	// Validate the recovery proof based on the configured recovery method
 	if !h.validateRecoveryProof(r.Context(), input.DID, identity.RecoveryState.Method, input.RecoveryProof) {
 		incrementIdentityRecovery("failure") // Increment failure counter
@@ -152,7 +152,7 @@ func (h *Handler) identityRecoverHandler(w http.ResponseWriter, r *http.Request)
 	recoveredAt := h.clock().Format(time.RFC3339)
 	h.writeSuccess(w, http.StatusOK, map[string]any{
 		"data": map[string]any{
-			"did":        input.DID,
+			"did":         input.DID,
 			"recoveredAt": recoveredAt,
 		},
 	}, nil, r)
@@ -186,20 +186,20 @@ func (h *Handler) validateEmailRecovery(ctx context.Context, did string, proof m
 	if !ok || token == "" {
 		return false
 	}
-	
+
 	// Extract email from proof
 	email, ok := proof["email"].(string)
 	if !ok || email == "" {
 		return false
 	}
-	
+
 	// Validate the recovery token
 	valid, err := h.store.ValidateRecoveryToken(ctx, did, email, token)
 	if err != nil {
 		h.logger.Error("failed to validate recovery token", "error", err, "did", did)
 		return false
 	}
-	
+
 	return valid
 }
 
@@ -222,7 +222,7 @@ func (h *Handler) validateSocialRecovery(ctx context.Context, did string, proof 
 	// 1. Check that we have at least threshold valid signatures
 	// 2. Verify each signature against trusted contacts
 	// 3. Ensure no duplicate signers
-	
+
 	h.logger.Info("social recovery validated", "did", did, "signatures", len(signatures), "threshold", int(threshold))
 	return len(signatures) >= int(threshold)
 }
@@ -246,7 +246,7 @@ func (h *Handler) validateKeyRecovery(ctx context.Context, did string, proof map
 	// 1. Look up the recovery key for this DID
 	// 2. Verify the signature against the recovery key
 	// 3. Check that the message is valid
-	
+
 	h.logger.Info("key recovery validated", "did", did, "hasSignature", signature != "", "hasMessage", message != "")
 	return signature != "" && message != ""
 }

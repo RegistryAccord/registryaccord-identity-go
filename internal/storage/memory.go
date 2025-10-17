@@ -14,40 +14,40 @@ import (
 // NewMemory returns a concurrency-safe in-memory implementation of Store.
 // Suitable for local development, tests, and as a fallback cache when
 // Postgres is unavailable.
-// 
+//
 // The implementation uses fine-grained mutexes for better concurrency:
 // - Separate mutexes for identities, operations, nonces, and idempotency records
 // - Read-write mutexes to allow concurrent reads
 func NewMemory() ExtendedStore {
 	return &memory{
-		identities:     make(map[string]model.Identity),  // DID -> Identity mapping
+		identities:     make(map[string]model.Identity),            // DID -> Identity mapping
 		operations:     make(map[string][]model.OperationLogEntry), // DID -> Operation log entries
-		nonces:         make(map[string]model.Nonce),      // Nonce value -> Nonce mapping
-		idempotency:    make(map[string]StoredResponse),   // Key -> Cached response mapping
-		recoveryTokens: make(map[string]RecoveryToken),   // Token value -> RecoveryToken mapping
-		jwtSigningKeys: make(map[string]model.JWTSigningKey), // Key ID -> JWTSigningKey mapping
+		nonces:         make(map[string]model.Nonce),               // Nonce value -> Nonce mapping
+		idempotency:    make(map[string]StoredResponse),            // Key -> Cached response mapping
+		recoveryTokens: make(map[string]RecoveryToken),             // Token value -> RecoveryToken mapping
+		jwtSigningKeys: make(map[string]model.JWTSigningKey),       // Key ID -> JWTSigningKey mapping
 	}
 }
 
 // memory implements the ExtendedStore interface using in-memory data structures.
 // Uses separate read-write mutexes for each data collection to improve concurrency.
 type memory struct {
-	muIdentity sync.RWMutex                    // Mutex for identity operations
-	identities map[string]model.Identity       // DID -> Identity mapping
+	muIdentity sync.RWMutex              // Mutex for identity operations
+	identities map[string]model.Identity // DID -> Identity mapping
 
-	muOps      sync.RWMutex                    // Mutex for operation log operations
+	muOps      sync.RWMutex                         // Mutex for operation log operations
 	operations map[string][]model.OperationLogEntry // DID -> Operation log entries
 
-	muNonce sync.RWMutex                       // Mutex for nonce operations
-	nonces  map[string]model.Nonce             // Nonce value -> Nonce mapping
+	muNonce sync.RWMutex           // Mutex for nonce operations
+	nonces  map[string]model.Nonce // Nonce value -> Nonce mapping
 
-	muIdempotency sync.RWMutex                 // Mutex for idempotency operations
-	idempotency   map[string]StoredResponse    // Key -> Cached response mapping
+	muIdempotency sync.RWMutex              // Mutex for idempotency operations
+	idempotency   map[string]StoredResponse // Key -> Cached response mapping
 
-	muRecovery sync.RWMutex                    // Mutex for recovery token operations
-	recoveryTokens map[string]RecoveryToken    // Token value -> RecoveryToken mapping
+	muRecovery     sync.RWMutex             // Mutex for recovery token operations
+	recoveryTokens map[string]RecoveryToken // Token value -> RecoveryToken mapping
 
-	muJWTKeys sync.RWMutex                     // Mutex for JWT signing key operations
+	muJWTKeys      sync.RWMutex                   // Mutex for JWT signing key operations
 	jwtSigningKeys map[string]model.JWTSigningKey // Key ID -> JWTSigningKey mapping
 }
 
@@ -195,7 +195,7 @@ func (m *memory) Recall(ctx context.Context, key string) (StoredResponse, bool) 
 	// Create a deep copy to prevent external modification of internal data
 	clone := StoredResponse{
 		StatusCode: resp.StatusCode,
-		Body:       append([]byte(nil), resp.Body...), // Copy body bytes
+		Body:       append([]byte(nil), resp.Body...),          // Copy body bytes
 		Headers:    make(map[string]string, len(resp.Headers)), // New header map
 		ExpiresAt:  resp.ExpiresAt,
 	}

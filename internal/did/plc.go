@@ -17,7 +17,7 @@ var (
 // GeneratePLC produces a new did:plc identifier composed of 24 lowercase base32 characters.
 // PLC (Peer Linking Context) DIDs are used as permanent, cryptographically-generated identifiers
 // for identities in the RegistryAccord system.
-// 
+//
 // The function generates 16 random bytes and encodes them as 24-character base32 string.
 // Returns a complete DID identifier in the format "did:plc:{24-character-id}"
 func GeneratePLC() (string, error) {
