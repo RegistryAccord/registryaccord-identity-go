@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/ed25519"
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
@@ -57,6 +58,12 @@ func New(cfg config.Config, store storage.ExtendedStore, logger *slog.Logger) (*
 	if logger == nil {
 		logger = slog.Default()
 	}
+	
+	// Initialize signing keys in storage
+	if err := initializeSigningKey(context.Background(), store, cfg); err != nil {
+		return nil, fmt.Errorf("failed to initialize signing keys: %w", err)
+	}
+	
 	h := &Handler{
 		cfg:    cfg,
 		store:  store,
@@ -75,26 +82,27 @@ func (h *Handler) Router() *http.ServeMux {
 }
 
 func (h *Handler) registerRoutes() {
-	h.router.Handle("/health", h.loggingMiddleware(h.timeoutMiddleware(http.HandlerFunc(h.health))))
-	h.router.Handle("/ready", h.loggingMiddleware(h.timeoutMiddleware(http.HandlerFunc(h.readyHandler))))
-	h.router.Handle("/metrics", h.loggingMiddleware(h.timeoutMiddleware(http.HandlerFunc(h.metricsHandler))))
+	// Apply CORS middleware to all routes
+	h.router.Handle("/health", h.corsMiddleware(h.loggingMiddleware(h.timeoutMiddleware(http.HandlerFunc(h.health)))))
+	h.router.Handle("/ready", h.corsMiddleware(h.loggingMiddleware(h.timeoutMiddleware(http.HandlerFunc(h.readyHandler)))))
+	h.router.Handle("/metrics", h.corsMiddleware(h.loggingMiddleware(h.timeoutMiddleware(http.HandlerFunc(h.metricsHandler)))))
 
-	h.router.Handle("/v1/identity", h.loggingMiddleware(h.timeoutMiddleware(h.wrap(h.handleIdentityCreate))))
-	h.router.Handle("/v1/identity/", h.loggingMiddleware(h.timeoutMiddleware(h.wrap(h.handleIdentityResolve))))
-	h.router.Handle("/.well-known/did.json", h.loggingMiddleware(h.timeoutMiddleware(h.wrap(h.wellKnownHandler))))
+	h.router.Handle("/v1/identity", h.corsMiddleware(h.loggingMiddleware(h.timeoutMiddleware(h.wrap(h.handleIdentityCreate)))))
+	h.router.Handle("/v1/identity/", h.corsMiddleware(h.loggingMiddleware(h.timeoutMiddleware(h.wrap(h.handleIdentityResolve)))))
+	h.router.Handle("/.well-known/did.json", h.corsMiddleware(h.loggingMiddleware(h.timeoutMiddleware(h.wrap(h.wellKnownHandler)))))
 
 	// Session authentication endpoints (challenge-response flow)
 	// GET /v1/session/nonce - Generate a single-use nonce for authentication
 	// POST /v1/session - Validate signed nonce and issue JWT session token
-	h.router.Handle("/v1/session/nonce", h.loggingMiddleware(h.timeoutMiddleware(h.wrap(h.handleSessionNonce))))
-	h.router.Handle("/v1/session", h.loggingMiddleware(h.timeoutMiddleware(h.wrap(h.handleSessionIssue))))
+	h.router.Handle("/v1/session/nonce", h.corsMiddleware(h.loggingMiddleware(h.timeoutMiddleware(h.wrap(h.handleSessionNonce)))))
+	h.router.Handle("/v1/session", h.corsMiddleware(h.loggingMiddleware(h.timeoutMiddleware(h.wrap(h.handleSessionIssue)))))
 
-	h.router.Handle("/v1/key/rotate", h.loggingMiddleware(h.timeoutMiddleware(h.wrap(h.keyRotateHandler))))
-	h.router.Handle("/v1/identity/recover", h.loggingMiddleware(h.timeoutMiddleware(h.wrap(h.identityRecoverHandler))))
+	h.router.Handle("/v1/key/rotate", h.corsMiddleware(h.loggingMiddleware(h.timeoutMiddleware(h.wrap(h.keyRotateHandler)))))
+	h.router.Handle("/v1/identity/recover", h.corsMiddleware(h.loggingMiddleware(h.timeoutMiddleware(h.wrap(h.identityRecoverHandler)))))
 	
 	// JWKS endpoints for public key discovery
-	h.router.Handle("/v1/jwks", h.loggingMiddleware(h.timeoutMiddleware(h.wrap(h.handleJWKS))))
-	h.router.Handle("/.well-known/jwks.json", h.loggingMiddleware(h.timeoutMiddleware(h.wrap(h.handleJWKS))))
+	h.router.Handle("/v1/jwks", h.corsMiddleware(h.loggingMiddleware(h.timeoutMiddleware(h.wrap(h.handleJWKS)))))
+	h.router.Handle("/.well-known/jwks.json", h.corsMiddleware(h.loggingMiddleware(h.timeoutMiddleware(h.wrap(h.handleJWKS)))))
 }
 
 type responseEnvelope struct {
@@ -400,6 +408,9 @@ func (h *Handler) handleSessionNonce(w http.ResponseWriter, r *http.Request) {
 	}
 	h.logger.Info("session nonce generated and stored successfully", "did", didID, "aud", audience, "expiresAt", expires.Format(time.RFC3339), "correlationId", correlationIDFrom(r.Context()))
 
+	// Increment nonce issuance counter
+	incrementNonceIssuance()
+
 	h.writeSuccess(w, http.StatusOK, map[string]any{
 		"data": map[string]any{
 			"nonce":     nonceValue,
@@ -436,9 +447,13 @@ func (h *Handler) handleSessionIssue(w http.ResponseWriter, r *http.Request) {
 	nonce, err := h.store.ConsumeNonce(r.Context(), input.Nonce)
 	if err != nil {
 		h.logger.Warn("session issue failed - nonce invalid or expired", "nonce", input.Nonce, "correlationId", correlationIDFrom(r.Context()))
+		// Increment nonce validation counter for failed validation
+		incrementNonceValidation("expired")
 		h.writeErrorWithRequest(w, r, http.StatusUnauthorized, "IDENTITY_AUTHZ", "nonce invalid or expired", nil)
 		return
 	}
+	// Increment nonce validation counter for successful validation
+	incrementNonceValidation("success")
 	// Verify the nonce is bound to the correct DID and audience
 	if input.DID != nonce.DID || input.Audience != nonce.Audience {
 		h.logger.Warn("session issue failed - nonce binding mismatch", "expectedDID", nonce.DID, "providedDID", input.DID, "expectedAud", nonce.Audience, "providedAud", input.Audience, "correlationId", correlationIDFrom(r.Context()))
@@ -483,6 +498,21 @@ func (h *Handler) handleSessionIssue(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Get the current signing key for JWT issuance
+	currentKey, err := h.store.GetCurrentSigningKey(r.Context())
+	if err != nil {
+		h.logger.Error("session issue failed - failed to get current signing key", "did", nonce.DID, "error", err, "correlationId", correlationIDFrom(r.Context()))
+		h.writeErrorWithRequest(w, r, http.StatusInternalServerError, "IDENTITY_INTERNAL", "failed to get signing key", nil)
+		return
+	}
+	
+	// Verify the current key has private key material
+	if len(currentKey.PrivateKey) == 0 {
+		h.logger.Error("session issue failed - current signing key missing private material", "did", nonce.DID, "keyID", currentKey.ID, "correlationId", correlationIDFrom(r.Context()))
+		h.writeErrorWithRequest(w, r, http.StatusInternalServerError, "IDENTITY_INTERNAL", "signing key missing private material", nil)
+		return
+	}
+	
 	// Generate a JWT session token with appropriate claims
 	issuedAt := time.Now()
 	expires := issuedAt.Add(h.cfg.SessionTTL)
@@ -490,10 +520,7 @@ func (h *Handler) handleSessionIssue(w http.ResponseWriter, r *http.Request) {
 	// Generate a unique JWT ID
 	jti := uuid.NewString()
 	
-	// Get the key ID for the signing key
-	keyID := fmt.Sprintf("key-%x", h.signer.Public().(ed25519.PublicKey)[:4])
-	
-	h.logger.Info("generating JWT token", "did", nonce.DID, "aud", nonce.Audience, "iss", h.cfg.JWTIssuer, "jti", jti, "keyID", keyID, "correlationId", correlationIDFrom(r.Context()))
+	h.logger.Info("generating JWT token", "did", nonce.DID, "aud", nonce.Audience, "iss", h.cfg.JWTIssuer, "jti", jti, "keyID", currentKey.ID, "correlationId", correlationIDFrom(r.Context()))
 	
 	claims := jwtlib.MapClaims{
 		"sub": nonce.DID,      // Subject is the authenticated DID
@@ -505,11 +532,12 @@ func (h *Handler) handleSessionIssue(w http.ResponseWriter, r *http.Request) {
 	}
 	
 	token := jwtlib.NewWithClaims(jwtlib.SigningMethodEdDSA, claims)
-	token.Header["kid"] = keyID // Add key ID to header for JWKS lookup
+	token.Header["kid"] = currentKey.ID // Add key ID to header for JWKS lookup
 
-	// Sign the JWT with the server's private key
-	h.logger.Info("signing JWT token", "did", nonce.DID, "keyID", keyID, "correlationId", correlationIDFrom(r.Context()))
-	signedToken, err := token.SignedString(h.signer)
+	// Sign the JWT with the current private key
+	privateKey := ed25519.PrivateKey(currentKey.PrivateKey)
+	h.logger.Info("signing JWT token", "did", nonce.DID, "keyID", currentKey.ID, "correlationId", correlationIDFrom(r.Context()))
+	signedToken, err := token.SignedString(privateKey)
 	if err != nil {
 		h.logger.Error("session issue failed - failed to sign jwt", "did", nonce.DID, "error", err, "correlationId", correlationIDFrom(r.Context()))
 		h.writeErrorWithRequest(w, r, http.StatusInternalServerError, "IDENTITY_INTERNAL", "failed to sign jwt", nil)
@@ -519,6 +547,9 @@ func (h *Handler) handleSessionIssue(w http.ResponseWriter, r *http.Request) {
 	// Add the DID to the request context for logging/middleware
 	ctx := context.WithValue(r.Context(), contextKeyDID, nonce.DID)
 	r = r.WithContext(ctx)
+
+	// Increment JWT issuance counter
+	incrementJWTIssuance()
 
 	h.writeSuccess(w, http.StatusOK, map[string]any{
 		"data": map[string]any{
@@ -545,47 +576,75 @@ func (h *Handler) handleJWKS(w http.ResponseWriter, r *http.Request) {
 	// Log the JWKS request
 	h.logger.Info("JWKS request received", "correlationId", correlationIDFrom(r.Context()))
 
-	// For now, we'll use the server's signing key as the JWKS key
-	// In a production implementation, this would query the storage for active keys
-	privKey := h.signer
-	if len(privKey) != ed25519.PrivateKeySize {
-		h.logger.Error("JWKS request failed - invalid signing key", "correlationId", correlationIDFrom(r.Context()))
-		h.writeErrorWithRequest(w, r, http.StatusInternalServerError, "IDENTITY_INTERNAL", "invalid signing key", nil)
+	// Get all active signing keys from storage
+	keys, err := h.store.ListActiveSigningKeys(r.Context())
+	if err != nil {
+		h.logger.Error("JWKS request failed - failed to retrieve signing keys", "error", err, "correlationId", correlationIDFrom(r.Context()))
+		// We don't have a specific metric for JWKS retrieval failures, but we could use the general error metric
+		h.writeErrorWithRequest(w, r, http.StatusInternalServerError, "IDENTITY_INTERNAL", "failed to retrieve signing keys", nil)
 		return
 	}
 
-	// Extract the public key from the private key
-	pubKey := privKey.Public().(ed25519.PublicKey)
+	// Convert active keys to JWKS format
+	jwksKeys := make([]model.JSONWebKey, 0, len(keys))
+	for _, key := range keys {
+		// Skip keys without public key data
+		if len(key.PublicKey) == 0 {
+			continue
+		}
+		
+		// Encode the public key as base64 URL-safe string (no padding)
+		// Ed25519 public keys are 32 bytes
+		x := base64.RawURLEncoding.EncodeToString(key.PublicKey)
+		
+		// Create JWKS entry for this key
+		jwksKey := model.JSONWebKey{
+			Kty: "OKP",     // Octet Key Pair for Ed25519
+			Kid: key.ID,     // Key identifier
+			Alg: "EdDSA",   // Algorithm
+			Use: "sig",     // Usage - signature
+			Crv: "Ed25519", // Curve
+			X:   x,         // Public key
+		}
+		
+		jwksKeys = append(jwksKeys, jwksKey)
+	}
 	
-	// Create a key ID based on the public key
-	keyID := fmt.Sprintf("key-%x", pubKey[:4])
-	
-	// Encode the public key as base64 URL-safe string (no padding)
-	// Ed25519 public keys are 32 bytes
-	x := base64.RawURLEncoding.EncodeToString(pubKey)
-	
-	// Create the JWKS response with our signing key
+	// Create the JWKS response with all active signing keys
 	jwks := model.JSONWebKeySet{
-		Keys: []model.JSONWebKey{
-			{
-				Kty: "OKP",     // Octet Key Pair for Ed25519
-				Kid: keyID,     // Key identifier
-				Alg: "EdDSA",   // Algorithm
-				Use: "sig",     // Usage - signature
-				Crv: "Ed25519", // Curve
-				X:   x,         // Public key
-			},
-		},
+		Keys: jwksKeys,
+	}
+	
+	// Convert JWKS to JSON for ETag calculation
+	jwksJSON, err := json.Marshal(jwks)
+	if err != nil {
+		h.logger.Error("JWKS request failed - failed to marshal JWKS for ETag", "error", err, "correlationId", correlationIDFrom(r.Context()))
+		h.writeErrorWithRequest(w, r, http.StatusInternalServerError, "IDENTITY_INTERNAL", "failed to generate JWKS", nil)
+		return
+	}
+	
+	// Generate ETag from JWKS content
+	etag := fmt.Sprintf("\"%x\"", sha256.Sum256(jwksJSON))
+	
+	// Check if client has a matching ETag (If-None-Match)
+	if r.Header.Get("If-None-Match") == etag {
+		w.Header().Set("ETag", etag)
+		w.Header().Set("Cache-Control", "public, max-age=300") // 5 minutes
+		w.WriteHeader(http.StatusNotModified)
+		h.logger.Info("JWKS not modified (ETag match)", "keyCount", len(jwksKeys), "correlationId", correlationIDFrom(r.Context()))
+		return
 	}
 	
 	// Set appropriate cache headers for JWKS
+	// Recommended cache TTL is 5-10 minutes for production
+	w.Header().Set("ETag", etag)
 	w.Header().Set("Cache-Control", "public, max-age=300") // 5 minutes
 	
 	// Increment JWKS cache refreshes counter
 	incrementJWKSCacheRefreshes()
 
 	h.writeSuccess(w, http.StatusOK, jwks, nil, r)
-	h.logger.Info("JWKS served successfully", "keyID", keyID, "correlationId", correlationIDFrom(r.Context()))
+	h.logger.Info("JWKS served successfully", "keyCount", len(jwksKeys), "etag", etag, "correlationId", correlationIDFrom(r.Context()))
 }
 
 func (h *Handler) writeSuccess(w http.ResponseWriter, status int, data any, meta any, r *http.Request) []byte {

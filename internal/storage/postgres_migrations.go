@@ -51,7 +51,8 @@ func MigratePostgres(ctx context.Context, db *sql.DB) error {
             value TEXT PRIMARY KEY,         -- Cryptographically secure nonce value
             did TEXT NOT NULL,              -- DID that requested this nonce
             audience TEXT NOT NULL,         -- Intended audience for the session
-            expires_at TIMESTAMPTZ NOT NULL -- Expiration timestamp with timezone
+            expires_at TIMESTAMPTZ NOT NULL,-- Expiration timestamp with timezone
+            used BOOLEAN NOT NULL DEFAULT FALSE -- Whether this nonce has been consumed
         )`,
 		// Index on expiration time for efficient cleanup of expired nonces
 		`CREATE INDEX IF NOT EXISTS idx_nonces_expires_at ON nonces (expires_at)`,
@@ -79,6 +80,21 @@ func MigratePostgres(ctx context.Context, db *sql.DB) error {
 		`CREATE INDEX IF NOT EXISTS idx_recovery_tokens_did ON recovery_tokens (did)`,
 		// Index on expiration time for efficient cleanup of expired tokens
 		`CREATE INDEX IF NOT EXISTS idx_recovery_tokens_expires_at ON recovery_tokens (expires_at)`,
+		// JWT signing keys table manages server-side keys for JWT signing
+		// Supports key rotation with overlapping validity windows
+		`CREATE TABLE IF NOT EXISTS jwt_signing_keys (
+            id TEXT PRIMARY KEY,            -- Unique key identifier
+            private_key BYTEA NOT NULL,     -- Private key bytes (NEVER exposed in APIs)
+            public_key BYTEA NOT NULL,      -- Public key bytes (exposed in JWKS)
+            created_at TIMESTAMPTZ NOT NULL,-- When the key was created
+            activated_at TIMESTAMPTZ NOT NULL,-- When the key became active
+            retired_at TIMESTAMPTZ,         -- When the key was retired (NULL if still active)
+            expires_at TIMESTAMPTZ NOT NULL -- When the key expires and should be removed
+        )`,
+		// Index on activation time for efficient key lookup
+		`CREATE INDEX IF NOT EXISTS idx_jwt_signing_keys_activated_at ON jwt_signing_keys (activated_at)`,
+		// Index on expiration time for efficient cleanup of expired keys
+		`CREATE INDEX IF NOT EXISTS idx_jwt_signing_keys_expires_at ON jwt_signing_keys (expires_at)`,
 	}
 
 	// Apply each migration in sequence

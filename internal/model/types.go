@@ -92,6 +92,7 @@ type Nonce struct {
 	DID       string    // DID that requested this nonce
 	Audience  string    // Intended audience for the session
 	ExpiresAt time.Time // Expiration timestamp for this nonce
+	Used      bool      // Whether this nonce has been consumed (for storage implementations that don't delete)
 }
 
 // SessionToken details returned after successful nonce validation.
@@ -115,4 +116,15 @@ type JSONWebKey struct {
 // JSONWebKeySet represents a JWKS response
 type JSONWebKeySet struct {
 	Keys []JSONWebKey `json:"keys"`
+}
+
+// JWTSigningKey represents a server-side JWT signing key with metadata for rotation
+type JWTSigningKey struct {
+	ID         string    `json:"id"`         // Unique key identifier
+	PrivateKey []byte    `json:"-"`          // Private key bytes (never serialized)
+	PublicKey  []byte    `json:"publicKey"`  // Public key bytes
+	CreatedAt  time.Time `json:"createdAt"`  // When the key was created
+	ActivatedAt time.Time `json:"activatedAt"` // When the key became active
+	RetiredAt  time.Time `json:"retiredAt"`  // When the key was retired (zero if still active)
+	ExpiresAt  time.Time `json:"expiresAt"`  // When the key expires and should be removed
 }

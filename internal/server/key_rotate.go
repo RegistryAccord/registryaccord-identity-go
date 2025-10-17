@@ -36,6 +36,7 @@ func (h *Handler) keyRotateHandler(w http.ResponseWriter, r *http.Request) {
 		Signature string `json:"signature"` // Signature proving ownership
 	}
 	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
+		incrementKeyRotation("failure")
 		h.writeError(w, http.StatusBadRequest, "IDENTITY_VALIDATION", "invalid JSON body", correlationIDFrom(r.Context()), nil)
 		return
 	}
@@ -47,6 +48,7 @@ func (h *Handler) keyRotateHandler(w http.ResponseWriter, r *http.Request) {
 	identity, err := h.store.GetIdentity(r.Context(), input.DID)
 	if err != nil {
 		h.logger.Warn("key rotation failed - identity not found", "did", input.DID, "correlationId", correlationIDFrom(r.Context()))
+		incrementKeyRotation("failure")
 		h.writeError(w, http.StatusNotFound, "IDENTITY_NOT_FOUND", "identity not found", correlationIDFrom(r.Context()), nil)
 		return
 	}
@@ -55,6 +57,7 @@ func (h *Handler) keyRotateHandler(w http.ResponseWriter, r *http.Request) {
 	// Uses the current key to sign a challenge message
 	if len(identity.Keys) == 0 {
 		h.logger.Error("key rotation failed - no keys found", "did", input.DID, "correlationId", correlationIDFrom(r.Context()))
+		incrementKeyRotation("failure")
 		h.writeError(w, http.StatusInternalServerError, "IDENTITY_INTERNAL", "no keys found", correlationIDFrom(r.Context()), nil)
 		return
 	}
@@ -63,6 +66,7 @@ func (h *Handler) keyRotateHandler(w http.ResponseWriter, r *http.Request) {
 	sig, err := base64.StdEncoding.DecodeString(input.Signature)
 	if err != nil {
 		h.logger.Warn("key rotation failed - invalid signature format", "did", input.DID, "correlationId", correlationIDFrom(r.Context()))
+		incrementKeyRotation("failure")
 		h.writeError(w, http.StatusBadRequest, "IDENTITY_VALIDATION", "signature must be base64", correlationIDFrom(r.Context()), nil)
 		return
 	}
@@ -72,6 +76,7 @@ func (h *Handler) keyRotateHandler(w http.ResponseWriter, r *http.Request) {
 	// Verify the signature using the current key
 	if !ed25519.Verify(currentKey.PublicKey, message, sig) {
 		h.logger.Warn("key rotation failed - signature verification failed", "did", input.DID, "correlationId", correlationIDFrom(r.Context()))
+		incrementKeyRotation("failure")
 		h.writeError(w, http.StatusUnauthorized, "IDENTITY_AUTHZ", "signature verification failed", correlationIDFrom(r.Context()), nil)
 		return
 	}
@@ -80,6 +85,7 @@ func (h *Handler) keyRotateHandler(w http.ResponseWriter, r *http.Request) {
 	pubKey, privKey, err := ed25519.GenerateKey(rand.Reader)
 	if err != nil {
 		h.logger.Error("key rotation failed - key generation error", "did", input.DID, "error", err, "correlationId", correlationIDFrom(r.Context()))
+		incrementKeyRotation("failure")
 		h.writeError(w, http.StatusInternalServerError, "IDENTITY_INTERNAL", "failed to generate key", correlationIDFrom(r.Context()), nil)
 		return
 	}
@@ -115,6 +121,7 @@ func (h *Handler) keyRotateHandler(w http.ResponseWriter, r *http.Request) {
 	// Persist the updated identity
 	if err := h.store.UpdateIdentity(r.Context(), identity); err != nil {
 		h.logger.Error("key rotation failed - failed to update identity", "did", input.DID, "error", err, "correlationId", correlationIDFrom(r.Context()))
+		incrementKeyRotation("failure")
 		h.writeError(w, http.StatusInternalServerError, "IDENTITY_INTERNAL", "failed to update identity", correlationIDFrom(r.Context()), nil)
 		return
 	}
@@ -141,5 +148,6 @@ func (h *Handler) keyRotateHandler(w http.ResponseWriter, r *http.Request) {
 		"rotatedAt": rotatedAt,          // When the rotation occurred
 		"newKid":    newKey.ID,          // ID of the newly created key
 	}, nil, r)
+	incrementKeyRotation("success")
 	h.logger.Info("key rotation completed successfully", "did", input.DID, "newKeyId", newKey.ID, "rotatedAt", rotatedAt, "correlationId", correlationIDFrom(r.Context()))
 }

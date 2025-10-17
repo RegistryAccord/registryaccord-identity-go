@@ -60,6 +60,10 @@ type Config struct {
 	AllowedAudiences []string // ID_ALLOWED_AUDIENCES - List of allowed audiences
 	DIDMethod        string   // ID_DID_METHOD - DID method (must be "plc" for Phase 1)
 	Port             int      // PORT - Server port number
+	
+	// TLS configuration
+	TLSCertFile      string   // Path to TLS certificate file
+	TLSKeyFile       string   // Path to TLS private key file
 }
 
 // Default configuration values used when environment variables are not set
@@ -212,6 +216,15 @@ func Load() (Config, error) {
 		return Config{}, fmt.Errorf("invalid ID_JWT_SIGNING_KEY base64: %w", err)
 	}
 	cfg.JWTPrivateKey = keyBytes
+
+	// Handle optional TLS configuration
+	if certFile, exists := os.LookupEnv("ID_TLS_CERT_FILE"); exists {
+		cfg.TLSCertFile = certFile
+	}
+	
+	if keyFile, exists := os.LookupEnv("ID_TLS_KEY_FILE"); exists {
+		cfg.TLSKeyFile = keyFile
+	}
 
 	return cfg, nil
 }

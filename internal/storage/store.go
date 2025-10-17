@@ -70,6 +70,30 @@ type RecoveryTokenStore interface {
 	CleanupExpiredRecoveryTokens(ctx context.Context, now time.Time) error
 }
 
+// JWTSigningKeyStore manages JWT signing keys for the service
+// Supports key rotation with overlapping validity windows
+type JWTSigningKeyStore interface {
+	// GetCurrentSigningKey returns the currently active signing key
+	GetCurrentSigningKey(ctx context.Context) (model.JWTSigningKey, error)
+	
+	// GetSigningKeyByID retrieves a specific signing key by its ID
+	GetSigningKeyByID(ctx context.Context, keyID string) (model.JWTSigningKey, error)
+	
+	// ListActiveSigningKeys returns all currently active signing keys
+	// (including those in the overlap window)
+	ListActiveSigningKeys(ctx context.Context) ([]model.JWTSigningKey, error)
+	
+	// AddSigningKey adds a new signing key to the store
+	AddSigningKey(ctx context.Context, key model.JWTSigningKey) error
+	
+	// RetireSigningKey marks a signing key as retired
+	// It will remain in the store until its expiration time
+	RetireSigningKey(ctx context.Context, keyID string, retiredAt time.Time) error
+	
+	// CleanupExpiredSigningKeys removes expired signing keys from storage
+	CleanupExpiredSigningKeys(ctx context.Context, now time.Time) error
+}
+
 // Store aggregates all persistence capabilities required by the service.
 // Provides a unified interface for all storage operations needed by the identity service.
 type Store interface {
@@ -79,10 +103,11 @@ type Store interface {
 	IdempotencyStore
 }
 
-// ExtendedStore extends the base Store interface with recovery token support.
+// ExtendedStore extends the base Store interface with recovery token and JWT signing key support.
 type ExtendedStore interface {
 	Store
 	RecoveryTokenStore
+	JWTSigningKeyStore
 }
 
 // StoredResponse captures the HTTP response data persisted for idempotent replays.

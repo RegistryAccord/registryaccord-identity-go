@@ -25,6 +25,7 @@ func NewMemory() ExtendedStore {
 		nonces:         make(map[string]model.Nonce),      // Nonce value -> Nonce mapping
 		idempotency:    make(map[string]StoredResponse),   // Key -> Cached response mapping
 		recoveryTokens: make(map[string]RecoveryToken),   // Token value -> RecoveryToken mapping
+		jwtSigningKeys: make(map[string]model.JWTSigningKey), // Key ID -> JWTSigningKey mapping
 	}
 }
 
@@ -45,6 +46,9 @@ type memory struct {
 
 	muRecovery sync.RWMutex                    // Mutex for recovery token operations
 	recoveryTokens map[string]RecoveryToken    // Token value -> RecoveryToken mapping
+
+	muJWTKeys sync.RWMutex                     // Mutex for JWT signing key operations
+	jwtSigningKeys map[string]model.JWTSigningKey // Key ID -> JWTSigningKey mapping
 }
 
 // CreateIdentity stores a new identity record in memory.
@@ -123,8 +127,8 @@ func (m *memory) PutNonce(ctx context.Context, nonce model.Nonce) error {
 }
 
 // ConsumeNonce retrieves and invalidates a nonce (single-use).
-// Returns ErrNotFound if the nonce doesn't exist or has expired.
-// The nonce is deleted from storage upon retrieval to ensure single-use.
+// Returns ErrNotFound if the nonce doesn't exist, has expired, or has already been used.
+// The nonce is marked as used in storage to ensure single-use.
 // Uses a write lock since it modifies the nonce collection.
 func (m *memory) ConsumeNonce(ctx context.Context, value string) (model.Nonce, error) {
 	m.muNonce.Lock()
@@ -133,12 +137,19 @@ func (m *memory) ConsumeNonce(ctx context.Context, value string) (model.Nonce, e
 	if !ok {
 		return model.Nonce{}, ErrNotFound
 	}
-	// Delete the nonce to ensure single-use
-	delete(m.nonces, value)
-	// Check if the nonce has expired
-	if time.Now().UTC().After(nonce.ExpiresAt) {
+	// Check if the nonce has already been used
+	if nonce.Used {
 		return model.Nonce{}, ErrNotFound
 	}
+	// Check if the nonce has expired
+	if time.Now().UTC().After(nonce.ExpiresAt) {
+		// Delete expired nonces
+		delete(m.nonces, value)
+		return model.Nonce{}, ErrNotFound
+	}
+	// Mark the nonce as used
+	nonce.Used = true
+	m.nonces[value] = nonce
 	return nonce, nil
 }
 

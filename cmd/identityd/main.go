@@ -3,6 +3,7 @@ package main
 
 import (
 	"context"
+	"crypto/tls"
 	"database/sql"
 	"fmt"
 	"log/slog"
@@ -75,9 +76,27 @@ func main() {
 
 	go func() {
 		logger.Info("identityd starting", "addr", srv.Addr, "env", cfg.Env, "didMethod", cfg.DIDMethod)
-		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			logger.Error("server error", "error", err)
-			os.Exit(1)
+		
+		// Use TLS if configured, otherwise use plain HTTP
+		if cfg.TLSCertFile != "" && cfg.TLSKeyFile != "" {
+			// Configure TLS 1.3 only for production environments
+			if cfg.Env == "prod" {
+				srv.TLSConfig = &tls.Config{
+					MinVersion: tls.VersionTLS13,
+					MaxVersion: tls.VersionTLS13,
+				}
+				logger.Info("enforcing TLS 1.3 in production")
+			}
+			
+			if err := srv.ListenAndServeTLS(cfg.TLSCertFile, cfg.TLSKeyFile); err != nil && err != http.ErrServerClosed {
+				logger.Error("server error", "error", err)
+				os.Exit(1)
+			}
+		} else {
+			if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+				logger.Error("server error", "error", err)
+				os.Exit(1)
+			}
 		}
 	}()
 

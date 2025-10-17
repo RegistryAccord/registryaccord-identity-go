@@ -224,16 +224,16 @@ func (p *postgres) ListOperations(ctx context.Context, did string) ([]model.Oper
 }
 
 // PutNonce stores a new nonce for later validation in PostgreSQL.
-// Nonces are stored with their associated DID, audience, and expiration time.
+// Nonces are stored with their associated DID, audience, expiration time, and used status.
 func (p *postgres) PutNonce(ctx context.Context, nonce model.Nonce) error {
 	// Set a reasonable timeout for database operations
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
 
 	// Insert nonce with all associated data
-	const q = `INSERT INTO nonces (value, did, audience, expires_at) VALUES ($1, $2, $3, $4)`
+	const q = `INSERT INTO nonces (value, did, audience, expires_at, used) VALUES ($1, $2, $3, $4, $5)`
 	// Execute insert with nonce data
-	_, err := p.db.ExecContext(ctx, q, nonce.Value, nonce.DID, nonce.Audience, nonce.ExpiresAt)
+	_, err := p.db.ExecContext(ctx, q, nonce.Value, nonce.DID, nonce.Audience, nonce.ExpiresAt, nonce.Used)
 	if err != nil {
 		return fmt.Errorf("insert nonce: %w", err)
 	}
@@ -241,17 +241,17 @@ func (p *postgres) PutNonce(ctx context.Context, nonce model.Nonce) error {
 }
 
 // ConsumeNonce retrieves and invalidates a nonce (single-use) from PostgreSQL.
-// Uses atomic DELETE with RETURNING to ensure single-use semantics.
-// Returns ErrNotFound if the nonce doesn't exist or has expired.
+// Uses atomic UPDATE with RETURNING to ensure single-use semantics.
+// Returns ErrNotFound if the nonce doesn't exist, has expired, or has already been used.
 func (p *postgres) ConsumeNonce(ctx context.Context, value string) (model.Nonce, error) {
 	// Set a reasonable timeout for database operations
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
 
-	// Atomically delete and return the nonce if it exists and hasn't expired
-	const q = `DELETE FROM nonces WHERE value = $1 AND expires_at > $2 RETURNING did, audience, expires_at`
+	// Atomically update and return the nonce if it exists, hasn't expired, and hasn't been used
+	const q = `UPDATE nonces SET used = true WHERE value = $1 AND expires_at > $2 AND used = false RETURNING did, audience, expires_at`
 	var nonce model.Nonce
-	// Execute delete and scan returned data
+	// Execute update and scan returned data
 	err := p.db.QueryRowContext(ctx, q, value, time.Now().UTC()).Scan(&nonce.DID, &nonce.Audience, &nonce.ExpiresAt)
 	if err != nil {
 		if err == sql.ErrNoRows {
@@ -259,19 +259,21 @@ func (p *postgres) ConsumeNonce(ctx context.Context, value string) (model.Nonce,
 		}
 		return model.Nonce{}, fmt.Errorf("consume nonce: %w", err)
 	}
-	// Set the nonce value (not returned by the query)
+	// Set the nonce value (not returned by the query) and mark as used
 	nonce.Value = value
+	nonce.Used = true
 	return nonce, nil
 }
 
 // CleanupExpired removes expired nonces from PostgreSQL storage.
 // This periodic cleanup prevents database bloat from expired nonces.
+// Also removes used nonces that have expired to free up space.
 func (p *postgres) CleanupExpired(ctx context.Context, now time.Time) error {
 	// Set a reasonable timeout for database operations
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
 
-	// Delete all expired nonces in a single operation
+	// Delete all expired nonces and used nonces that have expired in a single operation
 	const q = `DELETE FROM nonces WHERE expires_at <= $1`
 	// Execute delete with current time
 	_, err := p.db.ExecContext(ctx, q, now)
