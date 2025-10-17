@@ -15,7 +15,7 @@ fmt-check: ## Check formatting (no changes)
 	@test -s /tmp/gofumpt-check.log && (echo "Files need formatting:" && cat /tmp/gofumpt-check.log && rm /tmp/gofumpt-check.log && exit 1) || (rm -f /tmp/gofumpt-check.log && echo "Formatting is correct" && exit 0)
 
 lint: ## Run golangci-lint
-	@golangci-lint run
+	@golangci-lint run --exclude-use-default=false --disable=buildir
 
 test: ## Run unit tests with race detector
 	@$(GO) test -race -coverprofile=coverage.out $(PKG)

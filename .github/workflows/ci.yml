@@ -31,7 +31,7 @@ jobs:
       - name: Install tools
         run: |
           go install mvdan.cc/gofumpt@latest
-          curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $(go env GOPATH)/bin v1.60.1
+          curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $(go env GOPATH)/bin v1.58.2
 
       - name: Format check
         run: make fmt-check
