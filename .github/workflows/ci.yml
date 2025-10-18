@@ -42,8 +42,7 @@ jobs:
       - name: Lint
         uses: golangci/golangci-lint-action@v6
         with:
-          install-mode: goinstall
-          version: latest
+          version: v2.4.0
           args: --timeout=5m
 
       - name: Test

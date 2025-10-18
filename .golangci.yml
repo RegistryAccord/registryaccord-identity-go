@@ -1,12 +1,23 @@
-# Minimal golangci-lint configuration with explicit control
-version: "1.58.2"
+# golangci-lint v2 configuration
+version: "2"
+
 run:
   timeout: 5m
+  go: "1.25"
+
 linters:
-  disable-all: true
   enable:
     - gofumpt
     - govet
     - staticcheck
     - revive
     - gosec
+
+issues:
+  new-from-merge-base: main
+  uniq-by-line: true
+
+output:
+  format: colored-line-number
+  print-issued-lines: true
+  print-linter-name: true
