@@ -1,9 +1,9 @@
 name: CI
 on:
   push:
-    branches: [ main ]
+    branches: [main]
   pull_request:
-    branches: [ main ]
+    branches: [main]
 
 jobs:
   lint:
@@ -15,7 +15,7 @@ jobs:
       - name: Setup Go
         uses: actions/setup-go@v5
         with:
-          go-version: '1.25.x'
+          go-version: "1.25.x"
           check-latest: true
 
       - name: Cache Go modules
@@ -54,7 +54,7 @@ jobs:
       - name: Setup Go
         uses: actions/setup-go@v5
         with:
-          go-version: '1.25.x'
+          go-version: "1.25.x"
           check-latest: true
 
       - name: Cache Go modules
@@ -109,8 +109,26 @@ jobs:
       - name: Start devstack with identity service
         run: |
           cd devstack
-          # Use the locally built image
-          echo "IDENTITY_IMAGE_TAG=latest" >> .env
+          # Create .env file with required variables
+          cat > .env << EOF
+IDENTITY_IMAGE_TAG=latest
+IDENTITY_PORT=8081
+CDV_PORT=8082
+CDV_IMAGE_TAG=latest
+GATEWAY_PORT=8083
+GATEWAY_IMAGE_TAG=latest
+POSTGRES_USER=postgres
+POSTGRES_PASSWORD=postgres
+POSTGRES_DB=registryaccord
+POSTGRES_PORT=5432
+NATS_PORT=4222
+NATS_MONITOR_PORT=8222
+MINIO_PORT=9000
+MINIO_CONSOLE_PORT=9001
+ID_ISSUER_URL=http://identity:8081
+ID_ALLOWED_AUDIENCES=cdv,gateway
+ID_DID_METHOD=plc
+EOF
           docker compose pull
           docker compose up -d
           # Wait for services to be ready
@@ -127,7 +145,7 @@ jobs:
             exit 1
           fi
           echo "Created DID: $did"
-          
+
           # Get nonce
           nonce_response=$(curl -s "http://localhost:8081/v1/session/nonce?did=$did&aud=cdv")
           echo "Nonce response: $nonce_response"
@@ -137,10 +155,10 @@ jobs:
             exit 1
           fi
           echo "Got nonce: $nonce"
-          
+
           # In a real test, we would sign the nonce, but for CI we'll just verify the structure
           echo "Smoke test completed successfully"
-          
+
           # Check JWKS endpoint
           jwks_response=$(curl -s http://localhost:8081/.well-known/jwks.json)
           echo "JWKS response: $jwks_response"
@@ -190,8 +208,8 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
-          cache: 'npm'
+          node-version: "20"
+          cache: "npm"
           cache-dependency-path: conformance/package-lock.json
 
       - name: Install conformance dependencies
@@ -203,6 +221,26 @@ jobs:
       - name: Start devstack
         run: |
           cd devstack
+          # Create .env file with required variables
+          cat > .env << EOF
+IDENTITY_IMAGE_TAG=latest
+IDENTITY_PORT=8081
+CDV_PORT=8082
+CDV_IMAGE_TAG=latest
+GATEWAY_PORT=8083
+GATEWAY_IMAGE_TAG=latest
+POSTGRES_USER=postgres
+POSTGRES_PASSWORD=postgres
+POSTGRES_DB=registryaccord
+POSTGRES_PORT=5432
+NATS_PORT=4222
+NATS_MONITOR_PORT=8222
+MINIO_PORT=9000
+MINIO_CONSOLE_PORT=9001
+ID_ISSUER_URL=http://identity:8081
+ID_ALLOWED_AUDIENCES=cdv,gateway
+ID_DID_METHOD=plc
+EOF
           docker compose pull
           docker compose up -d
           # Wait for services to be ready
@@ -263,17 +301,18 @@ jobs:
       - name: Setup Go
         uses: actions/setup-go@v5
         with:
-          go-version: '1.25.x'
+          go-version: "1.25.x"
           check-latest: true
 
       - name: Start service
         run: |
           # Start the service in the background
-          ID_JWT_SIGNING_KEY=$(openssl rand -base64 32) \
+          # Generate a proper 64-byte base64-encoded signing key
+          ID_JWT_SIGNING_KEY=$(openssl rand -base64 48) \
           ID_ISSUER_URL=http://localhost:8080 \
           ID_ALLOWED_AUDIENCES=cdv,gateway \
           go run ./cmd/identityd &
-          
+
           # Wait for service to be ready
           timeout 30 bash -c 'until curl -s http://localhost:8080/health 2>/dev/null; do sleep 1; done'
           echo "Service started successfully"
@@ -282,7 +321,7 @@ jobs:
         run: |
           # Create a temporary directory for schemas
           mkdir -p schemas
-          
+
           # Define expected response envelope schema
           cat > schemas/success-envelope.json << 'EOF'
           {
@@ -295,7 +334,7 @@ jobs:
             "additionalProperties": false
           }
           EOF
-          
+
           cat > schemas/error-envelope.json << 'EOF'
           {
             "type": "object",
@@ -315,23 +354,23 @@ jobs:
             "additionalProperties": false
           }
           EOF
-          
+
           # Test a few endpoints to validate response formats
           echo "Testing API response formats..."
-          
+
           # Test health endpoint (should return plain text)
           health_response=$(curl -s http://localhost:8080/health)
           if [ "$health_response" != "ok" ]; then
             echo "ERROR: Health endpoint returned unexpected response: $health_response"
             exit 1
           fi
-          
+
           echo "API validation completed"
 
       - name: Validate JWT claims and JWKS structure
         run: |
           echo "Validating JWT claims and JWKS structure..."
-          
+
           # Define expected JWT claims structure
           cat > schemas/jwt-claims.json << 'EOF'
           {
@@ -347,7 +386,7 @@ jobs:
             }
           }
           EOF
-          
+
           # Define expected JWKS structure
           cat > schemas/jwks.json << 'EOF'
           {
@@ -372,5 +411,5 @@ jobs:
             }
           }
           EOF
-          
+
           echo "JWT and JWKS schema validation completed"
