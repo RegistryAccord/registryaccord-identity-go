@@ -18,6 +18,9 @@ issues:
   uniq-by-line: true
 
 output:
-  format: colored-line-number
-  print-issued-lines: true
-  print-linter-name: true
+  formats:
+    colored-line-number:
+      path: stdout
+      print-issued-lines: true
+      print-linter-name: true
+      colors: true
