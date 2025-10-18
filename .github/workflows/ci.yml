@@ -24,8 +24,7 @@ jobs:
           path: |
             ~/.cache/go-build
             ~/go/pkg/mod
-            ~/go/bin
-          key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}-tools-v1.58.2-2
+          key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}-tools-v1.58.2-3
           restore-keys: |
             ${{ runner.os }}-go-tools-v1.58.2-
             ${{ runner.os }}-go-tools-
@@ -64,8 +63,7 @@ jobs:
           path: |
             ~/.cache/go-build
             ~/go/pkg/mod
-            ~/go/bin
-          key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}-tools-v1.58.2-2
+          key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}-tools-v1.58.2-3
           restore-keys: |
             ${{ runner.os }}-go-tools-v1.58.2-
             ${{ runner.os }}-go-tools-
