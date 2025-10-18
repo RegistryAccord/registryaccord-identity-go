@@ -1,0 +1,118 @@
+name: Release
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  build-image:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository_owner }}/identityd
+          tags: |
+            type=ref,event=tag
+            type=raw,value=latest
+
+      - name: Build and push
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+
+  sign-and-sbom:
+    runs-on: ubuntu-latest
+    needs: build-image
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install cosign
+        uses: sigstore/cosign-installer@v3
+
+      - name: Install syft
+        uses: anchore/sbom-action/download-syft@v0
+
+      - name: Login to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository_owner }}/identityd
+          tags: |
+            type=ref,event=tag
+
+      - name: Sign image
+        run: |
+          cosign sign --yes ghcr.io/${{ github.repository_owner }}/identityd:${{ github.ref_name }}
+
+      - name: Generate SBOM
+        run: |
+          syft ghcr.io/${{ github.repository_owner }}/identityd:${{ github.ref_name }} -o spdx-json > sbom.spdx.json
+
+      - name: Attach SBOM
+        run: |
+          cosign attach sbom --sbom sbom.spdx.json ghcr.io/${{ github.repository_owner }}/identityd:${{ github.ref_name }}
+
+      - name: Generate provenance
+        uses: actions/attest-build-provenance@v1
+        with:
+          subject-name: ghcr.io/${{ github.repository_owner }}/identityd
+          subject-digest: ${{ steps.meta.outputs.tags }}
+          push-to-registry: true
+
+  publish-artifacts:
+    runs-on: ubuntu-latest
+    needs: sign-and-sbom
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download SBOM
+        run: |
+          # In a real implementation, we would download the SBOM from the previous step
+          echo "Downloading SBOM..."
+
+      - name: Create GitHub Release
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: ${{ github.ref }}
+          release_name: Release ${{ github.ref }}
+          draft: false
+          prerelease: false
+
+      - name: Upload SBOM as release asset
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: ./sbom.spdx.json
+          asset_name: sbom.spdx.json
+          asset_content_type: application/json

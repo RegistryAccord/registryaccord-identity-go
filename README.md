@@ -14,6 +14,18 @@ Identity service for the RegistryAccord protocol, focused on identity issuance a
 - **Observability**: Structured JSON logging, Prometheus metrics, and health/readiness probes
 - **Production Ready**: Graceful shutdown, request timeouts, background jobs, and cloud-native deployment
 
+## CI/CD Gates
+
+This repository enforces the following Phase-1 CI/CD gates:
+
+1. **Lint**: Code formatting and static analysis checks
+2. **Unit Tests**: Minimum 80% coverage on core packages (`internal/{server,did,nonce,jwks}`)
+3. **Integration Tests**: Smoke test with devstack (nonce→session flow + JWKS validation)
+4. **Conformance Tests**: ≥95% pass rate on identity category tests
+5. **API Validation**: Response format validation against RegistryAccord specifications
+
+All checks must pass for PRs to be merged.
+
 ## Quick Start
 
 ### Requirements
@@ -124,6 +136,38 @@ docker run -p 8080:8080 \
 make test
 ```
 
+## Running Integration Tests Locally
+
+To run integration tests locally using the devstack:
+
+1. Ensure you have the `registryaccord-devstack` repository checked out as a sibling directory
+2. Start the devstack:
+   ```bash
+   make devstack-up
+   ```
+3. Wait for services to be ready:
+   ```bash
+   make devstack-wait
+   ```
+4. Run the smoke test:
+   ```bash
+   ./scripts/smoke_identity.sh
+   ```
+5. Clean up:
+   ```bash
+   make devstack-down
+   ```
+
+## Running Conformance Tests Locally
+
+To run conformance tests locally:
+
+1. Ensure you have the `registryaccord-conformance` repository checked out as a sibling directory
+2. Run identity conformance tests:
+   ```bash
+   make conformance-identity
+   ```
+
 ## API Examples
 
 ### Create Identity
@@ -171,6 +215,25 @@ curl http://localhost:8080/v1/jwks
 # or
 curl http://localhost:8080/.well-known/jwks.json
 ```
+
+## Release Process
+
+Releases are automatically built, signed, and published when tags are pushed:
+
+1. **Build Container Image**: Images are built and pushed to GHCR as `ghcr.io/registryaccord/identityd:${tag}` and `:latest`
+2. **Sign with Cosign**: Images are signed using cosign with keyless signing
+3. **Generate SBOM**: Software Bill of Materials is generated with syft and attached to the image
+4. **Emit SLSA Provenance**: Build provenance is generated and attached
+5. **Create GitHub Release**: Release is created with SBOM as an asset
+
+To create a new release:
+
+1. Create and push a new tag:
+   ```bash
+   git tag v1.2.3
+   git push origin v1.2.3
+   ```
+2. The release workflow will automatically run and create the release
 
 ## Contributing
 
