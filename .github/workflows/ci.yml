@@ -189,9 +189,8 @@ jobs:
           echo "ID_ISSUER_URL=http://identity:8081" >> .env
           echo "ID_ALLOWED_AUDIENCES=cdv,gateway" >> .env
           echo "ID_DID_METHOD=plc" >> .env
-          # Build services that don't have pre-built images
           # Use pre-built images
-          docker compose up -d
+          docker compose up -d --no-build
           # Wait for services to be ready
           timeout 60 bash -c 'until docker compose exec identity wget -q -O /dev/null http://localhost:8081/readyz 2>/dev/null; do sleep 2; done'
 
@@ -309,9 +308,8 @@ jobs:
           echo "ID_ISSUER_URL=http://identity:8081" >> .env
           echo "ID_ALLOWED_AUDIENCES=cdv,gateway" >> .env
           echo "ID_DID_METHOD=plc" >> .env
-          # Build services that don't have pre-built images
           # Use pre-built images
-          docker compose up -d
+          docker compose up -d --no-build          
           # Wait for services to be ready
           timeout 60 bash -c 'until docker compose exec identity wget -q -O /dev/null http://localhost:8081/readyz 2>/dev/null; do sleep 2; done'
 
