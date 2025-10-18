@@ -19,8 +19,10 @@ issues:
 
 output:
   formats:
-    colored-line-number:
+    text:
       path: stdout
       print-issued-lines: true
       print-linter-name: true
       colors: true
+  path-mode: abs
+  show-stats: true
