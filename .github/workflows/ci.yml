@@ -110,25 +110,23 @@ jobs:
         run: |
           cd devstack
           # Create .env file with required variables
-          cat > .env << EOF
-IDENTITY_IMAGE_TAG=latest
-IDENTITY_PORT=8081
-CDV_PORT=8082
-CDV_IMAGE_TAG=latest
-GATEWAY_PORT=8083
-GATEWAY_IMAGE_TAG=latest
-POSTGRES_USER=postgres
-POSTGRES_PASSWORD=postgres
-POSTGRES_DB=registryaccord
-POSTGRES_PORT=5432
-NATS_PORT=4222
-NATS_MONITOR_PORT=8222
-MINIO_PORT=9000
-MINIO_CONSOLE_PORT=9001
-ID_ISSUER_URL=http://identity:8081
-ID_ALLOWED_AUDIENCES=cdv,gateway
-ID_DID_METHOD=plc
-EOF
+          echo "IDENTITY_IMAGE_TAG=latest" > .env
+          echo "IDENTITY_PORT=8081" >> .env
+          echo "CDV_PORT=8082" >> .env
+          echo "CDV_IMAGE_TAG=latest" >> .env
+          echo "GATEWAY_PORT=8083" >> .env
+          echo "GATEWAY_IMAGE_TAG=latest" >> .env
+          echo "POSTGRES_USER=postgres" >> .env
+          echo "POSTGRES_PASSWORD=postgres" >> .env
+          echo "POSTGRES_DB=registryaccord" >> .env
+          echo "POSTGRES_PORT=5432" >> .env
+          echo "NATS_PORT=4222" >> .env
+          echo "NATS_MONITOR_PORT=8222" >> .env
+          echo "MINIO_PORT=9000" >> .env
+          echo "MINIO_CONSOLE_PORT=9001" >> .env
+          echo "ID_ISSUER_URL=http://identity:8081" >> .env
+          echo "ID_ALLOWED_AUDIENCES=cdv,gateway" >> .env
+          echo "ID_DID_METHOD=plc" >> .env
           docker compose pull
           docker compose up -d
           # Wait for services to be ready
@@ -222,25 +220,23 @@ EOF
         run: |
           cd devstack
           # Create .env file with required variables
-          cat > .env << EOF
-IDENTITY_IMAGE_TAG=latest
-IDENTITY_PORT=8081
-CDV_PORT=8082
-CDV_IMAGE_TAG=latest
-GATEWAY_PORT=8083
-GATEWAY_IMAGE_TAG=latest
-POSTGRES_USER=postgres
-POSTGRES_PASSWORD=postgres
-POSTGRES_DB=registryaccord
-POSTGRES_PORT=5432
-NATS_PORT=4222
-NATS_MONITOR_PORT=8222
-MINIO_PORT=9000
-MINIO_CONSOLE_PORT=9001
-ID_ISSUER_URL=http://identity:8081
-ID_ALLOWED_AUDIENCES=cdv,gateway
-ID_DID_METHOD=plc
-EOF
+          echo "IDENTITY_IMAGE_TAG=latest" > .env
+          echo "IDENTITY_PORT=8081" >> .env
+          echo "CDV_PORT=8082" >> .env
+          echo "CDV_IMAGE_TAG=latest" >> .env
+          echo "GATEWAY_PORT=8083" >> .env
+          echo "GATEWAY_IMAGE_TAG=latest" >> .env
+          echo "POSTGRES_USER=postgres" >> .env
+          echo "POSTGRES_PASSWORD=postgres" >> .env
+          echo "POSTGRES_DB=registryaccord" >> .env
+          echo "POSTGRES_PORT=5432" >> .env
+          echo "NATS_PORT=4222" >> .env
+          echo "NATS_MONITOR_PORT=8222" >> .env
+          echo "MINIO_PORT=9000" >> .env
+          echo "MINIO_CONSOLE_PORT=9001" >> .env
+          echo "ID_ISSUER_URL=http://identity:8081" >> .env
+          echo "ID_ALLOWED_AUDIENCES=cdv,gateway" >> .env
+          echo "ID_DID_METHOD=plc" >> .env
           docker compose pull
           docker compose up -d
           # Wait for services to be ready
