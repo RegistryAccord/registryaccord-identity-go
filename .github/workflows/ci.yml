@@ -98,7 +98,27 @@ jobs:
         with:
           context: .
           load: true
-          tags: registryaccord/identityd:latest
+          tags: registryaccord/identity-go:latest
+
+      - name: Build CDV service
+        uses: docker/build-push-action@v5
+        with:
+          context: ../registryaccord-cdv-go
+          load: true
+          tags: registryaccord/cdv-go:latest
+
+      - name: Checkout gateway service
+        uses: actions/checkout@v4
+        with:
+          repository: RegistryAccord/registryaccord-gateway-go
+          path: gateway
+
+      - name: Build gateway service
+        uses: docker/build-push-action@v5
+        with:
+          context: ./gateway
+          load: true
+          tags: registryaccord/gateway-go:latest
 
       - name: Checkout devstack repo
         uses: actions/checkout@v4
@@ -127,7 +147,8 @@ jobs:
           echo "ID_ISSUER_URL=http://identity:8081" >> .env
           echo "ID_ALLOWED_AUDIENCES=cdv,gateway" >> .env
           echo "ID_DID_METHOD=plc" >> .env
-          docker compose pull
+          # Build services that don't have pre-built images
+          docker compose build
           docker compose up -d
           # Wait for services to be ready
           timeout 60 bash -c 'until docker compose exec identity wget -q -O /dev/null http://localhost:8081/readyz 2>/dev/null; do sleep 2; done'
@@ -191,6 +212,36 @@ jobs:
       - name: Checkout identity service
         uses: actions/checkout@v4
 
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build identity service
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          load: true
+          tags: registryaccord/identity-go:latest
+
+      - name: Build CDV service
+        uses: docker/build-push-action@v5
+        with:
+          context: ../registryaccord-cdv-go
+          load: true
+          tags: registryaccord/cdv-go:latest
+
+      - name: Checkout gateway service
+        uses: actions/checkout@v4
+        with:
+          repository: RegistryAccord/registryaccord-gateway-go
+          path: gateway
+
+      - name: Build gateway service
+        uses: docker/build-push-action@v5
+        with:
+          context: ./gateway
+          load: true
+          tags: registryaccord/gateway-go:latest
+
       - name: Checkout conformance repo
         uses: actions/checkout@v4
         with:
@@ -237,7 +288,8 @@ jobs:
           echo "ID_ISSUER_URL=http://identity:8081" >> .env
           echo "ID_ALLOWED_AUDIENCES=cdv,gateway" >> .env
           echo "ID_DID_METHOD=plc" >> .env
-          docker compose pull
+          # Build services that don't have pre-built images
+          docker compose build
           docker compose up -d
           # Wait for services to be ready
           timeout 60 bash -c 'until docker compose exec identity wget -q -O /dev/null http://localhost:8081/readyz 2>/dev/null; do sleep 2; done'
@@ -304,7 +356,7 @@ jobs:
         run: |
           # Start the service in the background
           # Generate a proper 64-byte base64-encoded signing key
-          ID_JWT_SIGNING_KEY=$(openssl rand -base64 48) \
+          ID_JWT_SIGNING_KEY=$(openssl rand -base64 64) \
           ID_ISSUER_URL=http://localhost:8080 \
           ID_ALLOWED_AUDIENCES=cdv,gateway \
           go run ./cmd/identityd &
