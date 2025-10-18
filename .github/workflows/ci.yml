@@ -83,29 +83,21 @@ jobs:
           name: coverage-report
           path: coverage.out
 
-  integration-devstack:
+  build-services:
     runs-on: ubuntu-latest
     needs: unit
     steps:
-      - name: Checkout
+      - name: Checkout identity service
         uses: actions/checkout@v4
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Build identity service
-        uses: docker/build-push-action@v5
+      - name: Checkout CDV service
+        uses: actions/checkout@v4
         with:
-          context: .
-          load: true
-          tags: registryaccord/identity-go:latest
-
-      - name: Build CDV service
-        uses: docker/build-push-action@v5
-        with:
-          context: ../registryaccord-cdv-go
-          load: true
-          tags: registryaccord/cdv-go:latest
+          repository: RegistryAccord/registryaccord-cdv-go
+          path: cdv
 
       - name: Checkout gateway service
         uses: actions/checkout@v4
@@ -113,18 +105,68 @@ jobs:
           repository: RegistryAccord/registryaccord-gateway-go
           path: gateway
 
+      - name: Build identity service
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          load: true
+          tags: registryaccord/identity-go:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Build CDV service
+        uses: docker/build-push-action@v5
+        with:
+          context: ./cdv
+          load: true
+          tags: registryaccord/cdv-go:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
       - name: Build gateway service
         uses: docker/build-push-action@v5
         with:
           context: ./gateway
           load: true
           tags: registryaccord/gateway-go:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
 
+      - name: Export images
+        run: |
+          mkdir -p images
+          docker save registryaccord/identity-go:latest > images/identity-go.tar
+          docker save registryaccord/cdv-go:latest > images/cdv-go.tar
+          docker save registryaccord/gateway-go:latest > images/gateway-go.tar
+
+      - name: Upload images as artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: built-images
+          path: images/
+          retention-days: 1
+
+  integration-devstack:
+    runs-on: ubuntu-latest
+    needs: build-services
+    steps:
       - name: Checkout devstack repo
         uses: actions/checkout@v4
         with:
           repository: RegistryAccord/registryaccord-devstack
           path: devstack
+
+      - name: Download built images
+        uses: actions/download-artifact@v4
+        with:
+          name: built-images
+          path: images
+
+      - name: Load images
+        run: |
+          docker load < images/identity-go.tar
+          docker load < images/cdv-go.tar
+          docker load < images/gateway-go.tar
 
       - name: Start devstack with identity service
         run: |
@@ -207,41 +249,8 @@ jobs:
 
   conformance-identity:
     runs-on: ubuntu-latest
-    needs: unit
+    needs: build-services
     steps:
-      - name: Checkout identity service
-        uses: actions/checkout@v4
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Build identity service
-        uses: docker/build-push-action@v5
-        with:
-          context: .
-          load: true
-          tags: registryaccord/identity-go:latest
-
-      - name: Build CDV service
-        uses: docker/build-push-action@v5
-        with:
-          context: ../registryaccord-cdv-go
-          load: true
-          tags: registryaccord/cdv-go:latest
-
-      - name: Checkout gateway service
-        uses: actions/checkout@v4
-        with:
-          repository: RegistryAccord/registryaccord-gateway-go
-          path: gateway
-
-      - name: Build gateway service
-        uses: docker/build-push-action@v5
-        with:
-          context: ./gateway
-          load: true
-          tags: registryaccord/gateway-go:latest
-
       - name: Checkout conformance repo
         uses: actions/checkout@v4
         with:
@@ -253,6 +262,18 @@ jobs:
         with:
           repository: RegistryAccord/registryaccord-devstack
           path: devstack
+
+      - name: Download built images
+        uses: actions/download-artifact@v4
+        with:
+          name: built-images
+          path: images
+
+      - name: Load images
+        run: |
+          docker load < images/identity-go.tar
+          docker load < images/cdv-go.tar
+          docker load < images/gateway-go.tar
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
