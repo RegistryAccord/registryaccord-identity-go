@@ -7,11 +7,14 @@ run:
 
 linters:
   enable:
-    - gofumpt
     - govet
     - staticcheck
     - revive
     - gosec
+
+formatters:
+  enable:
+    - gofumpt
 
 issues:
   new-from-merge-base: main
