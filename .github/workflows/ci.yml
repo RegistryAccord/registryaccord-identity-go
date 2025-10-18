@@ -190,7 +190,7 @@ jobs:
           echo "ID_ALLOWED_AUDIENCES=cdv,gateway" >> .env
           echo "ID_DID_METHOD=plc" >> .env
           # Build services that don't have pre-built images
-          docker compose build
+          # Use pre-built images
           docker compose up -d
           # Wait for services to be ready
           timeout 60 bash -c 'until docker compose exec identity wget -q -O /dev/null http://localhost:8081/readyz 2>/dev/null; do sleep 2; done'
@@ -310,7 +310,7 @@ jobs:
           echo "ID_ALLOWED_AUDIENCES=cdv,gateway" >> .env
           echo "ID_DID_METHOD=plc" >> .env
           # Build services that don't have pre-built images
-          docker compose build
+          # Use pre-built images
           docker compose up -d
           # Wait for services to be ready
           timeout 60 bash -c 'until docker compose exec identity wget -q -O /dev/null http://localhost:8081/readyz 2>/dev/null; do sleep 2; done'
