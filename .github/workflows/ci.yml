@@ -190,7 +190,8 @@ jobs:
           echo "ID_ALLOWED_AUDIENCES=cdv,gateway" >> .env
           echo "ID_DID_METHOD=plc" >> .env
           echo "PORT=8081" >> .env
-          echo 'ID_JWT_SIGNING_KEY=$(openssl rand -base64 32)' >> .env
+          JWT_KEY=$(openssl rand -base64 32)
+          echo "ID_JWT_SIGNING_KEY=$JWT_KEY" >> .env
           # Use pre-built images
           docker compose up -d --no-build
           # Wait for services to be ready
@@ -311,7 +312,8 @@ jobs:
           echo "ID_ALLOWED_AUDIENCES=cdv,gateway" >> .env
           echo "ID_DID_METHOD=plc" >> .env
           echo "PORT=8081" >> .env
-          echo 'ID_JWT_SIGNING_KEY=$(openssl rand -base64 32)' >> .env
+          JWT_KEY=$(openssl rand -base64 32)
+          echo "ID_JWT_SIGNING_KEY=$JWT_KEY" >> .env
           # Use pre-built images
           docker compose up -d --no-build          
           # Wait for services to be ready
